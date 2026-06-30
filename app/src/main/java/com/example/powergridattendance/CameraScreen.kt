@@ -43,6 +43,12 @@ fun CameraScreen(
             "nsfw_model.tflite"
         )
     }
+    val blurHelper = remember {
+        TFLiteModelHelper(
+            context,
+            "blur_model.tflite"
+        )
+    }
 
     Box(
         modifier = Modifier.fillMaxSize()
@@ -129,6 +135,13 @@ fun CameraScreen(
                                     "TEST_SPOOF",
                                     "Spoof score = $spoofScore"
                                 )
+                                val blurScore =
+                                    blurHelper.predict(croppedFace)
+
+                                Log.d(
+                                    "TEST_BLUR",
+                                    "Blur score = $blurScore"
+                                )
 
                                 val nsfwScore =
                                     nsfwHelper.predict(capturedBitmap)
@@ -175,8 +188,7 @@ fun CameraScreen(
                                     CaptureResultState.nsfwScore.value =
                                         nsfwScore
 
-                                    CaptureResultState.blurScore.value =
-                                        0f
+                                    CaptureResultState.blurScore.value = blurScore
 
                                     CaptureResultState.matchScore.value =
                                         1f
