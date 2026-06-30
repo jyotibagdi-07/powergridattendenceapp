@@ -1,9 +1,12 @@
 package com.example.powergridattendance
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -13,11 +16,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
 
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Log.d("PERMISSION", "Camera permission successfully granted by launcher")
+        } else {
+            Log.e("PERMISSION", "Camera permission denied by user")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Request CAMERA permission at startup if not already granted
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED) {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
 
         val faceNetHelper = FaceNetHelper(this)
 
@@ -73,7 +93,12 @@ class MainActivity : ComponentActivity() {
                     "camera" -> {
                         CameraScreen(
                             onDone = {
-                                currentScreen = "result"
+                                val status = CaptureResultState.status.value
+                                if (status == "SUCCESS" || status == "REGISTERED") {
+                                    currentScreen = "dashboard"
+                                } else {
+                                    currentScreen = "result"
+                                }
                             }
                         )
                     }

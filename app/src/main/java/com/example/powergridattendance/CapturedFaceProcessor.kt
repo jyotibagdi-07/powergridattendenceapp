@@ -9,7 +9,6 @@ object CapturedFaceProcessor {
     fun processCapturedFace(
         context: Context,
         bitmap: Bitmap,
-        outputFileName: String,
         onSuccess: (Bitmap) -> Unit,
         onFailure: () -> Unit
     ) {
@@ -26,12 +25,6 @@ object CapturedFaceProcessor {
                     )
 
                 if (croppedFace != null) {
-
-                    BitmapUtils.saveBitmap(
-                        context,
-                        croppedFace,
-                        outputFileName
-                    )
 
                     onSuccess(croppedFace)
 

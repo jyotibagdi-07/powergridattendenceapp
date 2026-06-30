@@ -10,7 +10,7 @@ import java.nio.channels.FileChannel
 import kotlin.math.sqrt
 
 class FaceNetHelper(
-    private val context: Context
+    context: Context
 ) {
 
     var interpreter: Interpreter? = null
@@ -20,116 +20,56 @@ class FaceNetHelper(
     private val embeddingSize = 512
 
     init {
-
         try {
+            val assetFileDescriptor = context.assets.openFd("facenet.tflite")
+            val inputStream = assetFileDescriptor.createInputStream()
+            val fileChannel = inputStream.channel
+            val startOffset = assetFileDescriptor.startOffset
+            val declaredLength = assetFileDescriptor.declaredLength
 
-            val assetFileDescriptor =
-                context.assets.openFd("facenet.tflite")
-
-            val inputStream =
-                assetFileDescriptor.createInputStream()
-
-            val fileChannel =
-                inputStream.channel
-
-            val startOffset =
-                assetFileDescriptor.startOffset
-
-            val declaredLength =
-                assetFileDescriptor.declaredLength
-
-            val modelBuffer =
-                fileChannel.map(
-                    FileChannel.MapMode.READ_ONLY,
-                    startOffset,
-                    declaredLength
-                )
-
-            interpreter =
-                Interpreter(modelBuffer)
-
-            Log.d(
-                "FACENET",
-                "MODEL LOADED SUCCESSFULLY"
+            val modelBuffer = fileChannel.map(
+                FileChannel.MapMode.READ_ONLY,
+                startOffset,
+                declaredLength
             )
+
+            interpreter = Interpreter(modelBuffer)
+            Log.d("FACENET_INIT", "FaceNet framework initialized successfully")
 
         } catch (e: Exception) {
-
-            Log.e(
-                "FACENET",
-                "MODEL LOAD FAILED",
-                e
-            )
+            Log.e("FACENET_INIT", "CRITICAL error provisioning FaceNet interpreter architecture", e)
         }
     }
 
-    fun isModelLoaded(): Boolean {
-        return interpreter != null
-    }
+    fun isModelLoaded(): Boolean = interpreter != null
 
     fun getEmbedding(bitmap: Bitmap): FloatArray {
-
-        val resizedBitmap =
-            Bitmap.createScaledBitmap(
-                bitmap,
-                inputSize,
-                inputSize,
-                true
-            )
-
-        val byteBuffer =
-            ByteBuffer.allocateDirect(
-                1 * inputSize * inputSize * 3 * 4
-            )
-
+        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
+        val byteBuffer = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * 4)
         byteBuffer.order(ByteOrder.nativeOrder())
+        byteBuffer.rewind()
 
-        val pixels =
-            IntArray(inputSize * inputSize)
+        val pixels = IntArray(inputSize * inputSize)
+        resizedBitmap.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
 
-        resizedBitmap.getPixels(
-            pixels,
-            0,
-            inputSize,
-            0,
-            0,
-            inputSize,
-            inputSize
-        )
+        // Fixed single-pass iteration stream to prevent layout degradation during tensor assignment
+        for (pixelValue in pixels) {
+            val r = ((pixelValue shr 16) and 0xFF) / 255f
+            val g = ((pixelValue shr 8) and 0xFF) / 255f
+            val b = (pixelValue and 0xFF) / 255f
 
-        var pixelIndex = 0
-
-        for (i in 0 until inputSize) {
-            for (j in 0 until inputSize) {
-
-                val pixelValue = pixels[pixelIndex++]
-
-                val r = ((pixelValue shr 16) and 0xFF) / 255f
-                val g = ((pixelValue shr 8) and 0xFF) / 255f
-                val b = (pixelValue and 0xFF) / 255f
-
-                byteBuffer.putFloat(r)
-                byteBuffer.putFloat(g)
-                byteBuffer.putFloat(b)
-            }
+            byteBuffer.putFloat(r)
+            byteBuffer.putFloat(g)
+            byteBuffer.putFloat(b)
         }
 
-        val embedding =
-            Array(1) { FloatArray(embeddingSize) }
-
-        interpreter?.run(
-            byteBuffer,
-            embedding
-        )
+        val embedding = Array(1) { FloatArray(embeddingSize) }
+        interpreter?.run(byteBuffer, embedding)
 
         return embedding[0]
     }
 
-    fun compareFaces(
-        embedding1: FloatArray,
-        embedding2: FloatArray
-    ): Float {
-
+    fun compareFaces(embedding1: FloatArray, embedding2: FloatArray): Float {
         var dot = 0f
         var norm1 = 0f
         var norm2 = 0f
@@ -140,11 +80,6 @@ class FaceNetHelper(
             norm2 += embedding2[i] * embedding2[i]
         }
 
-        return (
-                dot / (
-                        sqrt(norm1.toDouble()) *
-                                sqrt(norm2.toDouble())
-                        )
-                ).toFloat()
+        return (dot / (sqrt(norm1.toDouble()) * sqrt(norm2.toDouble()))).toFloat()
     }
 }

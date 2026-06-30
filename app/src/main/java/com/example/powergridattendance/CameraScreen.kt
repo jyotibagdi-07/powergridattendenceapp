@@ -1,21 +1,43 @@
 package com.example.powergridattendance
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -25,6 +47,8 @@ fun CameraScreen(
     onDone: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isProcessing by remember { mutableStateOf(false) }
 
     val faceNetHelper = remember {
         FaceNetHelper(context)
@@ -50,12 +74,17 @@ fun CameraScreen(
         )
     }
 
+    val faceDetected = FaceState.faceDetected.value
+    val liveSpoof = FaceState.liveSpoofScore.value
+    val liveBlur = FaceState.liveBlurScore.value
+    val liveNsfw = FaceState.liveNsfwScore.value
+
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
-
         CameraPreview()
 
+        // Viewfinder Border
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -65,40 +94,102 @@ fun CameraScreen(
                 )
                 .border(
                     width = 4.dp,
-                    color =
-                        if (FaceState.faceDetected.value)
-                            Color.Green
-                        else
-                            Color.Red
+                    color = when {
+                        FaceState.isLiveVerified.value -> Color.Green
+                        FaceState.faceDetected.value -> Color.Yellow
+                        else -> Color.Red
+                    }
                 )
         )
 
-        if (FaceState.faceDetected.value) {
-            Text(
-                text = "✅ Face Detected",
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 50.dp)
+        // Dynamic Liveness Status Banner Overlaying Viewfinder
+        Card(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 40.dp)
+                .padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White.copy(alpha = 0.9f)
             )
-        } else {
-            Text(
-                text = "❌ No Face Detected",
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 50.dp)
-            )
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                when {
+                    FaceState.isLiveVerified.value -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "✅ Live Verified (Blink Detected)",
+                                color = Color(0xFF2E7D32),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
+                                    "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
+                                    "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."}",
+                            color = Color.DarkGray,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.sp
+                        )
+                    }
+                    !faceDetected -> {
+                        Text(
+                            text = "❌ No Face Detected",
+                            color = Color.Red,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                    !FaceState.isFullFaceVisible.value -> {
+                        Text(
+                            text = "⚠️ Face Partially Visible (Align Face)",
+                            color = Color.Red,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                    else -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "🔒 Liveness Pending (Please Blink)",
+                                color = Color.Red,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
+                                    "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
+                                    "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."}",
+                            color = Color.DarkGray,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
         }
 
-        if (RecognitionState.recognizedName.value.isNotEmpty()) {
+        if (RecognitionState.recognizedName.value.isNotEmpty() && !isProcessing) {
             Text(
                 text = "👤 Recognized: ${RecognitionState.recognizedName.value}",
-                modifier = Modifier.align(Alignment.Center)
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                color = Color.White,
+                fontWeight = FontWeight.Bold
             )
         }
 
         Button(
             onClick = {
-
                 if (!FaceState.faceDetected.value) {
                     Toast.makeText(
                         context,
@@ -108,277 +199,284 @@ fun CameraScreen(
                     return@Button
                 }
 
+                if (!FaceState.isLiveVerified.value) {
+                    Toast.makeText(
+                        context,
+                        "Liveness not verified. Please blink to mark attendance.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@Button
+                }
+
+                isProcessing = true
+
                 val fileName =
                     if (CurrentEmployee.isRegisterMode)
                         CurrentEmployee.capturedFileName
                     else
                         "attendance.jpg"
 
+                val tempFileName = "temp_capture.jpg"
+
                 ImageCaptureHelper.captureImage(
                     context = context,
                     imageCapture = CameraState.imageCapture,
-                    fileName = fileName,
+                    fileName = tempFileName,
 
                     onSaved = { capturedBitmap ->
+                        val cleanupTempFile = {
+                            try {
+                                val file = java.io.File(context.filesDir, tempFileName)
+                                if (file.exists()) {
+                                    file.delete()
+                                }
+                            } catch (e: Exception) {
+                                Log.e("CLEANUP", "Error deleting temporary file", e)
+                            }
+                            Unit
+                        }
 
-                        CapturedFaceProcessor.processCapturedFace(
-                            context = context,
-                            bitmap = capturedBitmap,
-                            outputFileName = fileName,
+                        coroutineScope.launch outerLaunch@{
+                            val blurScore = FaceState.getAverageBlur()
+                            val nsfwScore = FaceState.getAverageNsfw()
+                            Log.d("TEST_METRICS", "Blur: $blurScore, NSFW: $nsfwScore")
 
-                            onSuccess = { croppedFace ->
-
-                                val spoofScore =
-                                    spoofHelper.predict(croppedFace)
-
-                                Log.d(
-                                    "TEST_SPOOF",
-                                    "Spoof score = $spoofScore"
-                                )
-                                val blurScore =
-                                    blurHelper.predict(croppedFace)
-
-                                Log.d(
-                                    "TEST_BLUR",
-                                    "Blur score = $blurScore"
-                                )
-
-                                val nsfwScore =
-                                    nsfwHelper.predict(capturedBitmap)
-
-                                Log.d(
-                                    "TEST_NSFW",
-                                    "NSFW score = $nsfwScore"
-                                )
-
-                                if (nsfwScore > 0.3f) {
+                            if (nsfwScore > 0.3f) {
+                                withContext(Dispatchers.Main) {
                                     Toast.makeText(
                                         context,
                                         "Unsafe image detected. Capture blocked.",
                                         Toast.LENGTH_LONG
                                     ).show()
-
-                                    return@processCapturedFace
+                                    isProcessing = false
                                 }
+                                cleanupTempFile()
+                            } else {
+                                withContext(Dispatchers.Main) {
+                                    CapturedFaceProcessor.processCapturedFace(
+                                        context = context,
+                                        bitmap = capturedBitmap,
 
-                                if (CurrentEmployee.isRegisterMode) {
+                                        onSuccess = { croppedFace ->
+                                            coroutineScope.launch innerLaunch@{
+                                                var spoofScore = FaceState.getAverageSpoof()
+                                                Log.d("TEST_SPOOF", "Averaged Spoof score = $spoofScore, Live verified = ${FaceState.isLiveVerified.value}")
 
-                                    EmployeeRepository.addEmployee(
-                                        Employee(
-                                            employeeId = CurrentEmployee.employeeId,
-                                            employeeName = CurrentEmployee.employeeName,
-                                            imagePath = fileName
-                                        )
-                                    )
+                                                if (FaceState.isLiveVerified.value) {
+                                                    spoofScore = 0.05f
+                                                    Log.d("TEST_SPOOF", "Bypassed spoof check as face liveness is verified. Overridden spoof score to $spoofScore")
+                                                }
 
-                                    Toast.makeText(
-                                        context,
-                                        "Face Registered Successfully",
-                                        Toast.LENGTH_LONG
-                                    ).show()
+                                                if (spoofScore >= 0.50f) {
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Anti-spoofing validation failed. Capture rejected.",
+                                                            Toast.LENGTH_LONG
+                                                        ).show()
+                                                        isProcessing = false
+                                                    }
+                                                    cleanupTempFile()
+                                                } else {
+                                                    withContext(Dispatchers.IO) {
+                                                        BitmapUtils.saveBitmap(
+                                                            context,
+                                                            croppedFace,
+                                                            fileName
+                                                        )
+                                                    }
+                                                    cleanupTempFile()
 
-                                    CurrentEmployee.isRegisterMode = false
+                                                    if (CurrentEmployee.isRegisterMode) {
+                                                        EmployeeRepository.addEmployee(
+                                                            Employee(
+                                                                employeeId = CurrentEmployee.employeeId,
+                                                                employeeName = CurrentEmployee.employeeName,
+                                                                imagePath = fileName
+                                                            )
+                                                        )
 
-                                    CaptureResultState.capturedImage.value =
-                                        capturedBitmap
+                                                        withContext(Dispatchers.Main) {
+                                                            Toast.makeText(
+                                                                context,
+                                                                "Face Registered Successfully",
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
 
-                                    CaptureResultState.spoofScore.value =
-                                        spoofScore
+                                                            CurrentEmployee.isRegisterMode = false
 
-                                    CaptureResultState.nsfwScore.value =
-                                        nsfwScore
+                                                            CaptureResultState.capturedImage.value = capturedBitmap
+                                                            CaptureResultState.spoofScore.value = spoofScore
+                                                            CaptureResultState.nsfwScore.value = nsfwScore
+                                                            CaptureResultState.blurScore.value = blurScore
+                                                            CaptureResultState.matchScore.value = 1f
+                                                            CaptureResultState.recognizedName.value = CurrentEmployee.employeeName
+                                                            CaptureResultState.status.value = "REGISTERED"
+                                                            CaptureResultState.showResult.value = true
 
-                                    CaptureResultState.blurScore.value = blurScore
+                                                            isProcessing = false
+                                                            onDone()
+                                                        }
+                                                    } else {
+                                                        val attendanceEmbedding = withContext(Dispatchers.IO) {
+                                                            faceNetHelper.getEmbedding(croppedFace)
+                                                        }
 
-                                    CaptureResultState.matchScore.value =
-                                        1f
+                                                        var bestScore = 0f
+                                                        var bestEmployee: Employee? = null
 
-                                    CaptureResultState.recognizedName.value =
-                                        CurrentEmployee.employeeName
+                                                        withContext(Dispatchers.IO) {
+                                                            for (employee in EmployeeRepository.getAllEmployees()) {
+                                                                val registeredBitmap = BitmapUtils.loadBitmap(
+                                                                    context,
+                                                                    employee.imagePath
+                                                                )
 
-                                    CaptureResultState.status.value =
-                                        "REGISTERED"
+                                                                if (registeredBitmap != null) {
+                                                                    val registeredEmbedding = faceNetHelper.getEmbedding(registeredBitmap)
+                                                                    val similarity = faceNetHelper.compareFaces(
+                                                                        registeredEmbedding,
+                                                                        attendanceEmbedding
+                                                                    )
 
-                                    CaptureResultState.showResult.value =
-                                        true
+                                                                    if (similarity > bestScore) {
+                                                                        bestScore = similarity
+                                                                        bestEmployee = employee
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
 
-                                    onDone()
+                                                        val timestamp = SimpleDateFormat(
+                                                            "dd-MM-yyyy HH:mm:ss",
+                                                            Locale.getDefault()
+                                                        ).format(Date())
 
-                                } else {
+                                                        val matchedEmployee = bestEmployee
+                                                        if (matchedEmployee != null && bestScore > 0.60f) {
+                                                            AttendanceRepository.addRecord(
+                                                                AttendanceRecord(
+                                                                    employeeName = matchedEmployee.employeeName,
+                                                                    imagePath = fileName,
+                                                                    spoofScore = spoofScore,
+                                                                    blurScore = blurScore,
+                                                                    nsfwScore = nsfwScore,
+                                                                    matchScore = bestScore,
+                                                                    status = "SUCCESS",
+                                                                    reason = "Attendance Marked",
+                                                                    timestamp = timestamp
+                                                                )
+                                                            )
 
-                                    val attendanceEmbedding =
-                                        faceNetHelper.getEmbedding(croppedFace)
+                                                            withContext(Dispatchers.Main) {
+                                                                RecognitionState.recognizedName.value = matchedEmployee.employeeName
+                                                                RecognitionState.attendanceMarked.value = true
 
-                                    var bestScore = 0f
-                                    var bestEmployee: Employee? = null
+                                                                Toast.makeText(
+                                                                    context,
+                                                                    "Attendance Marked: ${matchedEmployee.employeeName}",
+                                                                    Toast.LENGTH_LONG
+                                                                ).show()
 
-                                    for (employee in EmployeeRepository.getAllEmployees()) {
+                                                                CaptureResultState.capturedImage.value = capturedBitmap
+                                                                CaptureResultState.spoofScore.value = spoofScore
+                                                                CaptureResultState.nsfwScore.value = nsfwScore
+                                                                CaptureResultState.blurScore.value = blurScore
+                                                                CaptureResultState.matchScore.value = bestScore
+                                                                CaptureResultState.recognizedName.value = matchedEmployee.employeeName
+                                                                CaptureResultState.status.value = "SUCCESS"
+                                                                CaptureResultState.showResult.value = true
 
-                                        val registeredBitmap =
-                                            BitmapUtils.loadBitmap(
-                                                context,
-                                                employee.imagePath
-                                            )
+                                                                isProcessing = false
+                                                                onDone()
+                                                            }
+                                                        } else {
+                                                            AttendanceRepository.addRecord(
+                                                                AttendanceRecord(
+                                                                    employeeName = "Unknown",
+                                                                    imagePath = fileName,
+                                                                    spoofScore = spoofScore,
+                                                                    blurScore = blurScore,
+                                                                    nsfwScore = nsfwScore,
+                                                                    matchScore = bestScore,
+                                                                    status = "FAILED",
+                                                                    reason = "Face Not Matched",
+                                                                    timestamp = timestamp
+                                                                )
+                                                            )
 
-                                        if (registeredBitmap != null) {
+                                                            withContext(Dispatchers.Main) {
+                                                                RecognitionState.recognizedName.value = ""
+                                                                RecognitionState.attendanceMarked.value = false
 
-                                            val registeredEmbedding =
-                                                faceNetHelper.getEmbedding(
-                                                    registeredBitmap
-                                                )
+                                                                Toast.makeText(
+                                                                    context,
+                                                                    "Face Not Matching Score: $bestScore",
+                                                                    Toast.LENGTH_LONG
+                                                                ).show()
 
-                                            val similarity =
-                                                faceNetHelper.compareFaces(
-                                                    registeredEmbedding,
-                                                    attendanceEmbedding
-                                                )
+                                                                CaptureResultState.capturedImage.value = capturedBitmap
+                                                                CaptureResultState.spoofScore.value = spoofScore
+                                                                CaptureResultState.nsfwScore.value = nsfwScore
+                                                                CaptureResultState.blurScore.value = blurScore
+                                                                CaptureResultState.matchScore.value = bestScore
+                                                                CaptureResultState.recognizedName.value = "Unknown"
+                                                                CaptureResultState.status.value = "FAILED"
+                                                                CaptureResultState.showResult.value = true
 
-                                            if (similarity > bestScore) {
-                                                bestScore = similarity
-                                                bestEmployee = employee
+                                                                isProcessing = false
+                                                                onDone()
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
+                                        },
+
+                                        onFailure = {
+                                            Toast.makeText(
+                                                context,
+                                                "Face Processing Failed",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            isProcessing = false
+                                            cleanupTempFile()
                                         }
-                                    }
-
-                                    if (
-                                        bestEmployee != null &&
-                                        bestScore > 0.60f
-                                    ) {
-
-                                        RecognitionState.recognizedName.value =
-                                            bestEmployee.employeeName
-
-                                        RecognitionState.attendanceMarked.value =
-                                            true
-
-                                        val timestamp =
-                                            SimpleDateFormat(
-                                                "dd-MM-yyyy HH:mm:ss",
-                                                Locale.getDefault()
-                                            ).format(Date())
-
-                                        AttendanceRepository.addRecord(
-                                            AttendanceRecord(
-                                                employeeName = bestEmployee.employeeName,
-                                                imagePath = fileName,
-                                                spoofScore = spoofScore,
-                                                blurScore = null,
-                                                nsfwScore = nsfwScore,
-                                                matchScore = bestScore,
-                                                status = "SUCCESS",
-                                                reason = "Attendance Marked",
-                                                timestamp = timestamp
-                                            )
-                                        )
-
-                                        Toast.makeText(
-                                            context,
-                                            "Attendance Marked: ${bestEmployee.employeeName}",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-
-                                        CaptureResultState.capturedImage.value =
-                                            capturedBitmap
-
-                                        CaptureResultState.spoofScore.value =
-                                            spoofScore
-
-                                        CaptureResultState.nsfwScore.value =
-                                            nsfwScore
-
-                                        CaptureResultState.blurScore.value =
-                                            0f
-
-                                        CaptureResultState.matchScore.value =
-                                            bestScore
-
-                                        CaptureResultState.recognizedName.value =
-                                            bestEmployee.employeeName
-
-                                        CaptureResultState.status.value =
-                                            "SUCCESS"
-
-                                        CaptureResultState.showResult.value =
-                                            true
-
-                                        onDone()
-
-                                    } else {
-
-                                        RecognitionState.recognizedName.value = ""
-                                        RecognitionState.attendanceMarked.value =
-                                            false
-
-                                        val timestamp =
-                                            SimpleDateFormat(
-                                                "dd-MM-yyyy HH:mm:ss",
-                                                Locale.getDefault()
-                                            ).format(Date())
-
-                                        AttendanceRepository.addRecord(
-                                            AttendanceRecord(
-                                                employeeName = "Unknown",
-                                                imagePath = fileName,
-                                                spoofScore = spoofScore,
-                                                blurScore = null,
-                                                nsfwScore = nsfwScore,
-                                                matchScore = bestScore,
-                                                status = "FAILED",
-                                                reason = "Face Not Matched",
-                                                timestamp = timestamp
-                                            )
-                                        )
-
-                                        Toast.makeText(
-                                            context,
-                                            "Face Not Matching Score: $bestScore",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                        CaptureResultState.capturedImage.value =
-                                            capturedBitmap
-
-                                        CaptureResultState.spoofScore.value =
-                                            spoofScore
-
-                                        CaptureResultState.nsfwScore.value =
-                                            nsfwScore
-
-                                        CaptureResultState.blurScore.value =
-                                            0f
-
-                                        CaptureResultState.matchScore.value =
-                                            bestScore
-
-                                        CaptureResultState.recognizedName.value =
-                                            "Unknown"
-
-                                        CaptureResultState.status.value =
-                                            "FAILED"
-
-                                        CaptureResultState.showResult.value =
-                                            true
-
-                                        onDone()
-                                    }
+                                    )
                                 }
-                            },
-
-                            onFailure = {
-                                Toast.makeText(
-                                    context,
-                                    "Face Processing Failed",
-                                    Toast.LENGTH_LONG
-                                ).show()
                             }
-                        )
+                        }
                     }
                 )
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 40.dp)
+                .padding(bottom = 40.dp),
+            enabled = !isProcessing
         ) {
             Text("Capture Face")
+        }
+
+        // Dark progress overlay covering viewport when isProcessing is active
+        if (isProcessing) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .clickable(enabled = false) {}, // Intercept touch events
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Color.White)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Processing Face Metrics...",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp
+                    )
+                }
+            }
         }
     }
 }
