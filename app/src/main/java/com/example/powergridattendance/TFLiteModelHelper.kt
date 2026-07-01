@@ -83,16 +83,10 @@ class TFLiteModelHelper(
                 val g = ((pixel shr 8) and 0xFF) / 255f
                 val b = (pixel and 0xFF) / 255f
 
-                if (modelName == "spoof_model.tflite") {
-                    // Apply PyTorch ImageNet normalization: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    rArr[i] = (r - 0.485f) / 0.229f
-                    gArr[i] = (g - 0.456f) / 0.224f
-                    bArr[i] = (b - 0.406f) / 0.225f
-                } else {
-                    rArr[i] = r
-                    gArr[i] = g
-                    bArr[i] = b
-                }
+                // pre-processing scaled linearly to [0.0f, 1.0f] without PyTorch ImageNet averages subtraction/division
+                rArr[i] = r
+                gArr[i] = g
+                bArr[i] = b
             }
 
             for (v in rArr) inputBuffer.putFloat(v)
@@ -106,15 +100,10 @@ class TFLiteModelHelper(
                 val g = ((pixel shr 8) and 0xFF) / 255f
                 val b = (pixel and 0xFF) / 255f
 
-                if (modelName == "spoof_model.tflite") {
-                    inputBuffer.putFloat((r - 0.485f) / 0.229f)
-                    inputBuffer.putFloat((g - 0.456f) / 0.224f)
-                    inputBuffer.putFloat((b - 0.406f) / 0.225f)
-                } else {
-                    inputBuffer.putFloat(r)
-                    inputBuffer.putFloat(g)
-                    inputBuffer.putFloat(b)
-                }
+                // pre-processing scaled linearly to [0.0f, 1.0f] without PyTorch ImageNet averages subtraction/division
+                inputBuffer.putFloat(r)
+                inputBuffer.putFloat(g)
+                inputBuffer.putFloat(b)
             }
         }
 
@@ -136,7 +125,8 @@ class TFLiteModelHelper(
             val exp0 = exp(class0.toDouble())
             val exp1 = exp(class1.toDouble())
             val sum = exp0 + exp1
-            val prob1 = (exp1 / sum).toFloat() // Softmax confidence vector for class 1
+            // Class 0 = Safe/Real Person; Class 1 = Unsafe/Glare (NSFW)
+            val prob1 = (exp1 / sum).toFloat() // Softmax probability for Class 1 (Unsafe/NSFW/Spoof)
 
             Log.d("MODEL_SCORE_EVAL", "$modelName computed score=$prob1")
             return prob1
