@@ -83,13 +83,12 @@ class TFLiteModelHelper(
                 val g = ((pixel shr 8) and 0xFF) / 255f
                 val b = (pixel and 0xFF) / 255f
 
-<<<<<<< HEAD
                 if (modelName == "spoof_model.tflite") {
                     // Apply PyTorch ImageNet normalization: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
                     rArr[i] = (r - 0.485f) / 0.229f
                     gArr[i] = (g - 0.456f) / 0.224f
                     bArr[i] = (b - 0.406f) / 0.225f
-                    
+
                     if (i == 0) {
                         Log.d("MODEL_DEBUG", "First pixel normalized (NCHW): R=${rArr[i]}, G=${gArr[i]}, B=${bArr[i]}")
                     }
@@ -98,12 +97,6 @@ class TFLiteModelHelper(
                     gArr[i] = g
                     bArr[i] = b
                 }
-=======
-                // pre-processing scaled linearly to [0.0f, 1.0f] without PyTorch ImageNet averages subtraction/division
-                rArr[i] = r
-                gArr[i] = g
-                bArr[i] = b
->>>>>>> 2e29c9052ceab75004fd741efded0bcd1eaae963
             }
 
             for (v in rArr) inputBuffer.putFloat(v)
@@ -118,7 +111,6 @@ class TFLiteModelHelper(
                 val g = ((pixel shr 8) and 0xFF) / 255f
                 val b = (pixel and 0xFF) / 255f
 
-<<<<<<< HEAD
                 if (modelName == "spoof_model.tflite") {
                     val nr = (r - 0.485f) / 0.229f
                     val ng = (g - 0.456f) / 0.224f
@@ -134,12 +126,6 @@ class TFLiteModelHelper(
                     inputBuffer.putFloat(g)
                     inputBuffer.putFloat(b)
                 }
-=======
-                // pre-processing scaled linearly to [0.0f, 1.0f] without PyTorch ImageNet averages subtraction/division
-                inputBuffer.putFloat(r)
-                inputBuffer.putFloat(g)
-                inputBuffer.putFloat(b)
->>>>>>> 2e29c9052ceab75004fd741efded0bcd1eaae963
             }
         }
 

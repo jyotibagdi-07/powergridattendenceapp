@@ -83,34 +83,28 @@ object FaceState {
             val avgBlur = blurHistory.average().toFloat()
             val avgNsfw = nsfwSafetyHistory.average().toFloat()
 
-            // Evaluation thresholds
-            val blurPass = avgBlur > 0.40f
-            val nsfwPass = avgNsfw > 0.50f
-            val spoofPass = avgSpoof < 0.40f // Flipped output check: lower spoof score = live
+            // Ultra-Relaxed Thresholds for Speed
+            val blurPass = avgBlur > 0.20f 
+            val nsfwPass = avgNsfw > 0.30f 
+            val spoofPass = avgSpoof < 0.65f 
 
             var warningText: String? = null
             var triggerSuccess = false
 
             if (!blurPass || !nsfwPass) {
-                warningText = if (!blurPass) "Hold Still" else "Avoid Screen Glare"
-                // Soft alert warning: consecutivePassesStreak is NOT reset to 0
-                val finalWarning = warningText
-                onSoftAlert?.let { callback ->
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        callback(finalWarning)
-                    }
-                }
+                warningText = if (!blurPass) "Image Blurry" else "Adjust Lighting"
             } else if (spoofPass) {
-                consecutivePassesStreakInternal += 1
-                if (consecutivePassesStreakInternal >= 8) {
+                if (!LivenessDetector.blinkDetected) {
+                    warningText = "Blink to Mark Attendance"
+                } else {
+                    // INSTANT TRIGGER: Once blink is detected and scores are okay
                     attendanceVerifiedInternal = true
                     triggerSuccess = true
                 }
             } else {
-                // Liveness verification fails (spoof score high): reset streak completely
                 consecutivePassesStreakInternal = 0
+                warningText = "Liveness Failed"
             }
-
             return MetricUpdateResult(
                 avgSpoof = avgSpoof,
                 avgBlur = avgBlur,

@@ -80,7 +80,7 @@ fun RegisterFaceScreen(
                     CurrentEmployee.capturedFileName =
                         "${employeeId}_face.jpg"
 
-                    CurrentEmployee.isRegisterMode = true   // FIX
+                    CurrentEmployee.isRegisterMode = true
 
                     Toast.makeText(
                         context,

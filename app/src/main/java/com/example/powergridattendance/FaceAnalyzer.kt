@@ -21,6 +21,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
     private val detector = FaceDetectorHelper()
     private val spoofHelper = TFLiteModelHelper(context, "spoof_model.tflite")
     private val nsfwHelper = TFLiteModelHelper(context, "nsfw_model.tflite")
+    private val faceNetHelper = FaceNetHelper(context)
     private var lastAnalysisTimestamp = 0L
     private var lastFaceSeenTimestamp = 0L
 
@@ -46,7 +47,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
 
         try {
             val currentTimestamp = System.currentTimeMillis()
-            if (currentTimestamp - lastAnalysisTimestamp < 500) {
+            if (currentTimestamp - lastAnalysisTimestamp < 100) { // Reduced from 500ms to 100ms for high-speed analysis
                 isProcessing.set(false)
                 return
             }
@@ -69,9 +70,9 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                 try {
                     withContext(Dispatchers.Default) {
                         val image = InputImage.fromBitmap(rotatedBitmap, rotation)
-                        
+
                         // Await face detection asynchronously inside coroutine scope without blocking execution
-                        val faceDetected = suspendCancellableCoroutine<Boolean> { continuation ->
+                        val faceDetectedResult = suspendCancellableCoroutine<Boolean> { continuation ->
                             detector.detectFace(image) {
                                 if (continuation.isActive) {
                                     continuation.resume(FaceState.faceDetected.value)
@@ -79,59 +80,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                             }
                         }
 
-<<<<<<< HEAD
-                                coroutineScope.launch {
-                                    try {
-                                        val rawRect = FaceState.faceRect.value
-                                        if (rawRect != null) {
-                                            val rotatedRect = detector.rotateRect(
-                                                rawRect,
-                                                width,
-                                                height,
-                                                rotation
-                                            )
-                                            val croppedFace = FaceCropHelper.cropFace(rotatedBitmap, rotatedRect)
-                                            if (croppedFace != null) {
-                                                // Combined Spoof Detection Logic
-                                                val tfliteSpoof = spoofHelper.predict(croppedFace)
-                                                val hsvSpoof = LivenessDetector.analyzeHSVSpoof(croppedFace)
-                                                val glareSpoof = LivenessDetector.detectScreenGlare(croppedFace)
-                                                
-                                                val combinedSpoof = if (glareSpoof > 0.5f) 0.95f else (tfliteSpoof + hsvSpoof) / 2f
-
-                                                // Laplacian Variance Blur Detection
-                                                val blurScore = LivenessDetector.calculateBlurScore(croppedFace)
-
-                                                // NSFW detection
-                                                val nsfwScore = nsfwHelper.predict(rotatedBitmap)
-
-                                                withContext(Dispatchers.Main) {
-                                                    FaceState.addSpoofScore(combinedSpoof)
-                                                    FaceState.addBlurScore(blurScore)
-                                                    FaceState.addNsfwScore(nsfwScore)
-                                                    
-                                                    // Relaxed verification requirements for better reliability:
-                                                    // 1. Spoof score must be low-ish (< 0.6)
-                                                    // 2. Image must be somewhat sharp (blur > 8)
-                                                    // 3. Image must be safe (nsfw < 0.5)
-                                                    // 4. A clear blink must have been detected
-                                                    val isLive = (combinedSpoof < 0.6f && 
-                                                                 blurScore > 8f && 
-                                                                 nsfwScore < 0.5f &&
-                                                                 LivenessDetector.isBlinkDetected())
-                                                    
-                                                    FaceState.isLiveVerified.value = isLive
-                                                    
-                                                    if (isLive) {
-                                                        Log.d("LIVENESS_SUCCESS", "Face Verified as LIVE")
-                                                    }
-                                                }
-                                            } else {
-                                                withContext(Dispatchers.Main) {
-                                                    FaceState.clearHistory()
-                                                }
-=======
-                        if (faceDetected) {
+                        if (faceDetectedResult) {
                             lastFaceSeenTimestamp = System.currentTimeMillis()
                             val rawRect = FaceState.faceRect.value
                             if (rawRect != null) {
@@ -159,7 +108,6 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                             // Variance = 0.0f indicates frozen/printed photo attack
                                             if (varX == 0.0f && varY == 0.0f) {
                                                 isStaticAttack = true
->>>>>>> 2e29c9052ceab75004fd741efded0bcd1eaae963
                                             }
                                         }
                                     }
@@ -170,7 +118,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
 
                                     // Bezel & display border scanner
                                     val bezelEdgeDetected = LivenessDetector.detectPhoneEdges(rotatedBitmap, rotatedRect) ||
-                                                             LivenessDetector.detectPhoneBezelContours(rotatedBitmap, rotatedRect)
+                                            LivenessDetector.detectPhoneBezelContours(rotatedBitmap, rotatedRect)
 
                                     val tfliteSpoof = spoofHelper.predict(croppedFace)
                                     val hsvSpoof = LivenessDetector.analyzeHSVSpoof(croppedFace)
@@ -199,11 +147,28 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                     // Update metrics (evict index 0, append new, calculate average outside main thread)
                                     val result = FaceState.updateMetrics(rawSpoofScore, clarityScore, safetyScore)
 
+                                    // Perform Recognition in real-time
+                                    val (name, score) = if (!CurrentEmployee.isRegisterMode) {
+                                        RecognitionHelper.recognizeFace(croppedFace, faceNetHelper)
+                                    } else {
+                                        Pair("", 0f)
+                                    }
+
                                     withContext(Dispatchers.Main) {
                                         FaceState.liveSpoofScore.value = result.avgSpoof
                                         FaceState.liveBlurScore.value = result.avgBlur
                                         FaceState.liveNsfwScore.value = result.avgNsfw
-                                        
+
+                                        if (!CurrentEmployee.isRegisterMode && name != "Unknown") {
+                                            RecognitionState.recognizedName.value = name
+                                            RecognitionState.matchScore.value = score
+                                            RecognitionState.faceMatched.value = score > 0.60f
+                                        } else if (!CurrentEmployee.isRegisterMode) {
+                                            RecognitionState.recognizedName.value = "Unknown"
+                                            RecognitionState.matchScore.value = score
+                                            RecognitionState.faceMatched.value = false
+                                        }
+
                                         // Set UI warnings appropriately
                                         if (glareAttackDetected || bezelEdgeDetected) {
                                             FaceState.userWarning.value = "Avoid Screen Glare"
@@ -215,7 +180,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
 
                                         FaceState.consecutivePassesStreak.value = result.streak
                                         FaceState.attendanceVerified.value = result.verified
-                                        
+
                                         // Update UI color indicator immediately
                                         FaceState.isLiveVerified.value = (result.avgSpoof < 0.40f && result.avgBlur > 0.40f && result.avgNsfw > 0.50f)
 

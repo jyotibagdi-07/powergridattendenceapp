@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
                 "FACENET",
                 "READY FOR EMBEDDING"
             )
+            RecognitionHelper.loadEmbeddings(this, faceNetHelper)
         }
 
         setContent {

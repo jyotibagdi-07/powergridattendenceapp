@@ -35,7 +35,7 @@ class FaceDetectorHelper {
     private val options =
         FaceDetectorOptions.Builder()
             .setPerformanceMode(
-                FaceDetectorOptions.PERFORMANCE_MODE_FAST
+                FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE
             )
             .setLandmarkMode(
                 FaceDetectorOptions.LANDMARK_MODE_ALL
@@ -43,6 +43,8 @@ class FaceDetectorHelper {
             .setClassificationMode(
                 FaceDetectorOptions.CLASSIFICATION_MODE_ALL
             )
+            .setMinFaceSize(0.15f)
+            .enableTracking()
             .build()
 
     private val detector =
