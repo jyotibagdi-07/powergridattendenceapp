@@ -117,60 +117,69 @@ fun CameraScreen(
                 modifier = Modifier.padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                when {
-                    FaceState.isLiveVerified.value -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                if (CurrentEmployee.isRegisterMode) {
+                    Text(
+                        text = if (faceDetected) "✅ Face Detected - Ready to Register" else "❌ No Face Detected",
+                        color = if (faceDetected) Color(0xFF2E7D32) else Color.Red,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                } else {
+                    when {
+                        FaceState.isLiveVerified.value -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "✅ Live Verified",
+                                    color = Color(0xFF2E7D32),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "✅ Live Verified (Blink Detected)",
-                                color = Color(0xFF2E7D32),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
+                                text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
+                                        "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
+                                        "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."}",
+                                color = Color.DarkGray,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
-                                    "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
-                                    "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."}",
-                            color = Color.DarkGray,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 13.sp
-                        )
-                    }
-                    !faceDetected -> {
-                        Text(
-                            text = "❌ No Face Detected",
-                            color = Color.Red,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                    }
-                    !FaceState.isFullFaceVisible.value -> {
-                        Text(
-                            text = "⚠️ Face Partially Visible (Align Face)",
-                            color = Color.Red,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                    }
-                    else -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        !faceDetected -> {
                             Text(
-                                text = "🔒 Liveness Pending (Please Blink)",
+                                text = "❌ No Face Detected",
                                 color = Color.Red,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
-                                    "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
-                                    "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."}",
-                            color = Color.DarkGray,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 13.sp
-                        )
+                        !FaceState.isFullFaceVisible.value -> {
+                            Text(
+                                text = "⚠️ Face Partially Visible (Align Face)",
+                                color = Color.Red,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                        else -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "🔒 Liveness Pending (Please Blink)",
+                                    color = Color.Red,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
+                                        "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
+                                        "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."}",
+                                color = Color.DarkGray,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
             }
@@ -199,7 +208,7 @@ fun CameraScreen(
                     return@Button
                 }
 
-                if (!FaceState.isLiveVerified.value) {
+                if (!CurrentEmployee.isRegisterMode && !FaceState.isLiveVerified.value) {
                     Toast.makeText(
                         context,
                         "Liveness not verified. Please blink to mark attendance.",
@@ -209,6 +218,7 @@ fun CameraScreen(
                 }
 
                 isProcessing = true
+                Log.d("CAPTURE_DEBUG", "Starting capture. RegisterMode: ${CurrentEmployee.isRegisterMode}")
 
                 val fileName =
                     if (CurrentEmployee.isRegisterMode)
@@ -216,7 +226,8 @@ fun CameraScreen(
                     else
                         "attendance.jpg"
 
-                val tempFileName = "temp_capture.jpg"
+                val tempFileName = "temp_capture_${System.currentTimeMillis()}.jpg"
+                Log.d("CAPTURE_DEBUG", "Filename: $fileName, Temp: $tempFileName")
 
                 ImageCaptureHelper.captureImage(
                     context = context,
@@ -224,6 +235,7 @@ fun CameraScreen(
                     fileName = tempFileName,
 
                     onSaved = { capturedBitmap ->
+                        Log.d("CAPTURE_DEBUG", "Image captured successfully")
                         val cleanupTempFile = {
                             try {
                                 val file = java.io.File(context.filesDir, tempFileName)
@@ -239,9 +251,9 @@ fun CameraScreen(
                         coroutineScope.launch outerLaunch@{
                             val blurScore = FaceState.getAverageBlur()
                             val nsfwScore = FaceState.getAverageNsfw()
-                            Log.d("TEST_METRICS", "Blur: $blurScore, NSFW: $nsfwScore")
+                            Log.d("CAPTURE_DEBUG", "Metrics: Blur=$blurScore, NSFW=$nsfwScore")
 
-                            if (nsfwScore > 0.3f) {
+                            if (nsfwScore > 0.4f) {
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(
                                         context,
@@ -253,21 +265,19 @@ fun CameraScreen(
                                 cleanupTempFile()
                             } else {
                                 withContext(Dispatchers.Main) {
+                                    Log.d("CAPTURE_DEBUG", "Processing captured face...")
                                     CapturedFaceProcessor.processCapturedFace(
                                         context = context,
                                         bitmap = capturedBitmap,
 
                                         onSuccess = { croppedFace ->
+                                            Log.d("CAPTURE_DEBUG", "Face processed and cropped")
                                             coroutineScope.launch innerLaunch@{
-                                                var spoofScore = FaceState.getAverageSpoof()
-                                                Log.d("TEST_SPOOF", "Averaged Spoof score = $spoofScore, Live verified = ${FaceState.isLiveVerified.value}")
+                                                val spoofScore = FaceState.getAverageSpoof()
+                                                Log.d("CAPTURE_DEBUG", "Spoof: $spoofScore, LiveVerified: ${FaceState.isLiveVerified.value}")
 
-                                                if (FaceState.isLiveVerified.value) {
-                                                    spoofScore = 0.05f
-                                                    Log.d("TEST_SPOOF", "Bypassed spoof check as face liveness is verified. Overridden spoof score to $spoofScore")
-                                                }
-
-                                                if (spoofScore >= 0.50f) {
+                                                if (!CurrentEmployee.isRegisterMode && !FaceState.isLiveVerified.value && spoofScore >= 0.50f) {
+                                                    Log.w("CAPTURE_DEBUG", "Spoof block in attendance mode")
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                             context,
@@ -278,6 +288,7 @@ fun CameraScreen(
                                                     }
                                                     cleanupTempFile()
                                                 } else {
+                                                    Log.d("CAPTURE_DEBUG", "Saving bitmap to $fileName")
                                                     withContext(Dispatchers.IO) {
                                                         BitmapUtils.saveBitmap(
                                                             context,
@@ -288,6 +299,7 @@ fun CameraScreen(
                                                     cleanupTempFile()
 
                                                     if (CurrentEmployee.isRegisterMode) {
+                                                        Log.d("CAPTURE_DEBUG", "Registering employee: ${CurrentEmployee.employeeName}")
                                                         EmployeeRepository.addEmployee(
                                                             Employee(
                                                                 employeeId = CurrentEmployee.employeeId,

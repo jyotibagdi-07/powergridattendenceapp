@@ -88,6 +88,10 @@ class TFLiteModelHelper(
                     rArr[i] = (r - 0.485f) / 0.229f
                     gArr[i] = (g - 0.456f) / 0.224f
                     bArr[i] = (b - 0.406f) / 0.225f
+                    
+                    if (i == 0) {
+                        Log.d("MODEL_DEBUG", "First pixel normalized (NCHW): R=${rArr[i]}, G=${gArr[i]}, B=${bArr[i]}")
+                    }
                 } else {
                     rArr[i] = r
                     gArr[i] = g
@@ -101,15 +105,22 @@ class TFLiteModelHelper(
 
         } else {
             // Channel-Last Structure: Stream color tokens sequentially inline [R1, G1, B1, R2, G2, B2...]
-            for (pixel in pixels) {
+            for (i in pixels.indices) {
+                val pixel = pixels[i]
                 val r = ((pixel shr 16) and 0xFF) / 255f
                 val g = ((pixel shr 8) and 0xFF) / 255f
                 val b = (pixel and 0xFF) / 255f
 
                 if (modelName == "spoof_model.tflite") {
-                    inputBuffer.putFloat((r - 0.485f) / 0.229f)
-                    inputBuffer.putFloat((g - 0.456f) / 0.224f)
-                    inputBuffer.putFloat((b - 0.406f) / 0.225f)
+                    val nr = (r - 0.485f) / 0.229f
+                    val ng = (g - 0.456f) / 0.224f
+                    val nb = (b - 0.406f) / 0.225f
+                    inputBuffer.putFloat(nr)
+                    inputBuffer.putFloat(ng)
+                    inputBuffer.putFloat(nb)
+                    if (i == 0) {
+                        Log.d("MODEL_DEBUG", "First pixel normalized (NHWC): R=$nr, G=$ng, B=$nb")
+                    }
                 } else {
                     inputBuffer.putFloat(r)
                     inputBuffer.putFloat(g)

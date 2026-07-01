@@ -59,23 +59,14 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                             )
                                             val croppedFace = FaceCropHelper.cropFace(rotatedBitmap, rotatedRect)
                                             if (croppedFace != null) {
-                                                // TFLite Spoof Detection + HSV + Specular Glare + Bezel Edge Analysis
+                                                // Combined Spoof Detection Logic
                                                 val tfliteSpoof = spoofHelper.predict(croppedFace)
                                                 val hsvSpoof = LivenessDetector.analyzeHSVSpoof(croppedFace)
                                                 val glareSpoof = LivenessDetector.detectScreenGlare(croppedFace)
-                                                val edgeSpoof = if (LivenessDetector.detectPhoneEdges(rotatedBitmap, rotatedRect) ||
-                                                                    LivenessDetector.detectPhoneBezelContours(rotatedBitmap, rotatedRect)) 0.95f else 0.0f
                                                 
-                                                val presentationAttackDetected = glareSpoof > 0f || edgeSpoof > 0f
-                                                if (presentationAttackDetected) {
-                                                    withContext(Dispatchers.Main) {
-                                                        LivenessDetector.reset()
-                                                    }
-                                                }
-                                                
-                                                val combinedSpoof = if (presentationAttackDetected) 0.99f else maxOf(0.6f * tfliteSpoof + 0.4f * hsvSpoof, glareSpoof, edgeSpoof)
+                                                val combinedSpoof = if (glareSpoof > 0.5f) 0.95f else (tfliteSpoof + hsvSpoof) / 2f
 
-                                                // Laplacian Variance Blur Detection (Fast, lightweight, no model loading)
+                                                // Laplacian Variance Blur Detection
                                                 val blurScore = LivenessDetector.calculateBlurScore(croppedFace)
 
                                                 // NSFW detection
@@ -85,6 +76,22 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                                     FaceState.addSpoofScore(combinedSpoof)
                                                     FaceState.addBlurScore(blurScore)
                                                     FaceState.addNsfwScore(nsfwScore)
+                                                    
+                                                    // Relaxed verification requirements for better reliability:
+                                                    // 1. Spoof score must be low-ish (< 0.6)
+                                                    // 2. Image must be somewhat sharp (blur > 8)
+                                                    // 3. Image must be safe (nsfw < 0.5)
+                                                    // 4. A clear blink must have been detected
+                                                    val isLive = (combinedSpoof < 0.6f && 
+                                                                 blurScore > 8f && 
+                                                                 nsfwScore < 0.5f &&
+                                                                 LivenessDetector.isBlinkDetected())
+                                                    
+                                                    FaceState.isLiveVerified.value = isLive
+                                                    
+                                                    if (isLive) {
+                                                        Log.d("LIVENESS_SUCCESS", "Face Verified as LIVE")
+                                                    }
                                                 }
                                             } else {
                                                 withContext(Dispatchers.Main) {
