@@ -1,7 +1,18 @@
 package com.example.powergridattendance
 
+import android.graphics.Bitmap
 import android.graphics.Rect
 import androidx.compose.runtime.mutableStateOf
+
+data class MetricUpdateResult(
+    val avgSpoof: Float,
+    val avgBlur: Float,
+    val avgNsfw: Float,
+    val warningText: String?,
+    val streak: Int,
+    val verified: Boolean,
+    val triggerSuccess: Boolean
+)
 
 object FaceState {
 
@@ -12,13 +23,13 @@ object FaceState {
         mutableStateOf<Rect?>(null)
 
     val liveSpoofScore =
-        mutableStateOf<Float?>(null)
+        mutableStateOf<Float?>(0.0f)
 
     val liveBlurScore =
-        mutableStateOf<Float?>(null)
+        mutableStateOf<Float?>(1.0f)
 
     val liveNsfwScore =
-        mutableStateOf<Float?>(null)
+        mutableStateOf<Float?>(1.0f)
 
     val isLiveVerified =
         mutableStateOf(false)
@@ -29,71 +40,158 @@ object FaceState {
     val micromovementScore =
         mutableStateOf(0f)
 
-    private val spoofHistory = mutableListOf<Float>()
-    private val blurHistory = mutableListOf<Float>()
-    private val nsfwHistory = mutableListOf<Float>()
+    val consecutivePassesStreak =
+        mutableStateOf(0)
 
-    fun addSpoofScore(score: Float) {
-        synchronized(spoofHistory) {
-            spoofHistory.add(score)
-            if (spoofHistory.size > 10) {
+    val attendanceVerified =
+        mutableStateOf(false)
+
+    val userWarning =
+        mutableStateOf<String?>(null)
+
+    var onVerificationSuccess: ((croppedFace: Bitmap, fullBitmap: Bitmap) -> Unit)? = null
+    var onSoftAlert: ((String) -> Unit)? = null
+
+    private val spoofHistory = MutableList(10) { 0.0f }
+    private val blurHistory = MutableList(10) { 1.0f }
+    private val nsfwSafetyHistory = MutableList(10) { 1.0f }
+
+    private var consecutivePassesStreakInternal = 0
+    private var attendanceVerifiedInternal = false
+
+    fun updateMetrics(spoof: Float, blur: Float, nsfw: Float): MetricUpdateResult {
+        synchronized(this) {
+            // Evict the oldest historical score element (index 0 / FIFO approach)
+            if (spoofHistory.isNotEmpty()) {
                 spoofHistory.removeAt(0)
             }
+            // Append the newly computed frame score to the tail of the array
+            spoofHistory.add(spoof)
+
+            if (blurHistory.isNotEmpty()) {
+                blurHistory.removeAt(0)
+            }
+            blurHistory.add(blur)
+
+            if (nsfwSafetyHistory.isNotEmpty()) {
+                nsfwSafetyHistory.removeAt(0)
+            }
+            nsfwSafetyHistory.add(nsfw)
+
+            // Calculate the true rolling average across the updated 10-frame buffer array
+            val avgSpoof = spoofHistory.average().toFloat()
+            val avgBlur = blurHistory.average().toFloat()
+            val avgNsfw = nsfwSafetyHistory.average().toFloat()
+
+            // Evaluation thresholds
+            val blurPass = avgBlur > 0.40f
+            val nsfwPass = avgNsfw > 0.50f
+            val spoofPass = avgSpoof < 0.40f // Flipped output check: lower spoof score = live
+
+            var warningText: String? = null
+            var triggerSuccess = false
+
+            if (!blurPass || !nsfwPass) {
+                warningText = if (!blurPass) "Hold Still" else "Avoid Screen Glare"
+                // Soft alert warning: consecutivePassesStreak is NOT reset to 0
+                val finalWarning = warningText
+                onSoftAlert?.let { callback ->
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        callback(finalWarning)
+                    }
+                }
+            } else if (spoofPass) {
+                consecutivePassesStreakInternal += 1
+                if (consecutivePassesStreakInternal >= 8) {
+                    attendanceVerifiedInternal = true
+                    triggerSuccess = true
+                }
+            } else {
+                // Liveness verification fails (spoof score high): reset streak completely
+                consecutivePassesStreakInternal = 0
+            }
+
+            return MetricUpdateResult(
+                avgSpoof = avgSpoof,
+                avgBlur = avgBlur,
+                avgNsfw = avgNsfw,
+                warningText = warningText,
+                streak = consecutivePassesStreakInternal,
+                verified = attendanceVerifiedInternal,
+                triggerSuccess = triggerSuccess
+            )
+        }
+    }
+
+    fun addSpoofScore(score: Float) {
+        synchronized(this) {
+            if (spoofHistory.isNotEmpty()) {
+                spoofHistory.removeAt(0)
+            }
+            spoofHistory.add(score)
             liveSpoofScore.value = spoofHistory.average().toFloat()
         }
     }
 
     fun addBlurScore(score: Float) {
-        synchronized(blurHistory) {
-            blurHistory.add(score)
-            if (blurHistory.size > 10) {
+        synchronized(this) {
+            if (blurHistory.isNotEmpty()) {
                 blurHistory.removeAt(0)
             }
+            blurHistory.add(score)
             liveBlurScore.value = blurHistory.average().toFloat()
         }
     }
 
     fun addNsfwScore(score: Float) {
-        synchronized(nsfwHistory) {
-            nsfwHistory.add(score)
-            if (nsfwHistory.size > 10) {
-                nsfwHistory.removeAt(0)
+        synchronized(this) {
+            if (nsfwSafetyHistory.isNotEmpty()) {
+                nsfwSafetyHistory.removeAt(0)
             }
-            liveNsfwScore.value = nsfwHistory.average().toFloat()
+            nsfwSafetyHistory.add(score)
+            liveNsfwScore.value = nsfwSafetyHistory.average().toFloat()
         }
     }
 
     fun getAverageSpoof(): Float {
-        synchronized(spoofHistory) {
-            return if (spoofHistory.isEmpty()) 0.5f else spoofHistory.average().toFloat()
+        synchronized(this) {
+            return spoofHistory.average().toFloat()
         }
     }
 
     fun getAverageBlur(): Float {
-        synchronized(blurHistory) {
-            return if (blurHistory.isEmpty()) 0.0f else blurHistory.average().toFloat()
+        synchronized(this) {
+            return blurHistory.average().toFloat()
         }
     }
 
     fun getAverageNsfw(): Float {
-        synchronized(nsfwHistory) {
-            return if (nsfwHistory.isEmpty()) 0.0f else nsfwHistory.average().toFloat()
+        synchronized(this) {
+            return nsfwSafetyHistory.average().toFloat()
         }
     }
 
     fun clearHistory() {
-        synchronized(spoofHistory) {
+        synchronized(this) {
             spoofHistory.clear()
-            liveSpoofScore.value = null
-        }
-        synchronized(blurHistory) {
+            repeat(10) { spoofHistory.add(0.0f) }
             blurHistory.clear()
-            liveBlurScore.value = null
+            repeat(10) { blurHistory.add(1.0f) }
+            nsfwSafetyHistory.clear()
+            repeat(10) { nsfwSafetyHistory.add(1.0f) }
+
+            consecutivePassesStreakInternal = 0
+            attendanceVerifiedInternal = false
         }
-        synchronized(nsfwHistory) {
-            nsfwHistory.clear()
-            liveNsfwScore.value = null
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            liveSpoofScore.value = 0.0f
+            liveBlurScore.value = 1.0f
+            liveNsfwScore.value = 1.0f
+            isLiveVerified.value = false
+            isFullFaceVisible.value = false
+            consecutivePassesStreak.value = 0
+            attendanceVerified.value = false
+            userWarning.value = null
         }
-        isFullFaceVisible.value = false
     }
 }

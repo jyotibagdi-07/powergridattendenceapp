@@ -1,6 +1,7 @@
 package com.example.powergridattendance
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,7 +40,12 @@ fun ResultScreen(
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = null,
-                        modifier = Modifier.size(250.dp)
+                        modifier = Modifier
+                            .size(250.dp)
+                            .clickable {
+                                CaptureResultState.showResult.value = false
+                                onBack()
+                            }
                     )
                 }
 
