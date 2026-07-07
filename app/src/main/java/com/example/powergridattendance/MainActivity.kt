@@ -39,6 +39,9 @@ class MainActivity : ComponentActivity() {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
 
+        EmployeeRepository.init(this)
+        AttendanceRepository.init(this)
+
         val faceNetHelper = FaceNetHelper(this)
 
         if (faceNetHelper.isModelLoaded()) {
@@ -94,12 +97,10 @@ class MainActivity : ComponentActivity() {
                     "camera" -> {
                         CameraScreen(
                             onDone = {
-                                val status = CaptureResultState.status.value
-                                if (status == "SUCCESS" || status == "REGISTERED") {
-                                    currentScreen = "dashboard"
-                                } else {
-                                    currentScreen = "result"
-                                }
+                                currentScreen = "dashboard"
+                            },
+                            onBack = {
+                                currentScreen = "dashboard"
                             }
                         )
                     }
@@ -123,6 +124,8 @@ class MainActivity : ComponentActivity() {
                     "employeeDetails" -> {
                         EmployeeDetailsScreen(
                             onBack = {
+                                CurrentAttendanceSession.clearSession()
+                                FaceState.clearHistory()
                                 currentScreen = "dashboard"
                             }
                         )

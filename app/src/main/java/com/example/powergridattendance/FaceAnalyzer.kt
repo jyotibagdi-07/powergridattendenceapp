@@ -114,7 +114,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
 
                                     // 3. Algorithmic Anti-Glare Scanner (HSV color space thresholding)
                                     val glareRatio = calculateGlareRatio(croppedFace)
-                                    val glareAttackDetected = glareRatio > 0.08f
+                                    val glareAttackDetected = glareRatio > 0.18f
 
                                     // Bezel & display border scanner
                                     val bezelEdgeDetected = LivenessDetector.detectPhoneEdges(rotatedBitmap, rotatedRect) ||
@@ -125,7 +125,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                     val glareSpoof = LivenessDetector.detectScreenGlare(croppedFace)
                                     val edgeSpoof = if (bezelEdgeDetected) 0.95f else 0.0f
 
-                                    val presentationAttackDetected = glareSpoof > 0f || edgeSpoof > 0f || glareAttackDetected || isStaticAttack
+                                    val presentationAttackDetected = glareSpoof > 0.15f || edgeSpoof > 0f || glareAttackDetected || isStaticAttack
                                     if (presentationAttackDetected) {
                                         withContext(Dispatchers.Main) {
                                             LivenessDetector.reset()
@@ -136,16 +136,14 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                     val combinedSpoof = if (presentationAttackDetected) 0.99f else maxOf(0.6f * tfliteSpoof + 0.4f * hsvSpoof, glareSpoof, edgeSpoof)
                                     val rawSpoofScore = combinedSpoof
 
-                                    // Laplacian Variance Blur Calculation (Clarity metric where higher = sharper)
+                                    // Laplacian Variance Blur Calculation (higher = blurrier)
                                     val blurScore = LivenessDetector.calculateBlurScore(croppedFace)
-                                    val clarityScore = 1.0f - blurScore
 
-                                    // NSFW/safety metric where higher = safer (Logits class 0 Safe probability is maximized)
+                                    // NSFW/safety metric (higher = more NSFW probability)
                                     val nsfwScore = nsfwHelper.predict(rotatedBitmap)
-                                    val safetyScore = 1.0f - nsfwScore
 
                                     // Update metrics (evict index 0, append new, calculate average outside main thread)
-                                    val result = FaceState.updateMetrics(rawSpoofScore, clarityScore, safetyScore)
+                                    val result = FaceState.updateMetrics(rawSpoofScore, blurScore, nsfwScore)
 
                                     // Perform Recognition in real-time
                                     val (name, score) = if (!CurrentEmployee.isRegisterMode) {
@@ -181,8 +179,8 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                         FaceState.consecutivePassesStreak.value = result.streak
                                         FaceState.attendanceVerified.value = result.verified
 
-                                        // Update UI color indicator immediately
-                                        FaceState.isLiveVerified.value = (result.avgSpoof < 0.40f && result.avgBlur > 0.40f && result.avgNsfw > 0.50f)
+                                        // Update UI color indicator immediately: spoof < 0.40f, blurriness < 0.60f, NSFW < 0.50f, and blink detected
+                                        FaceState.isLiveVerified.value = (result.avgSpoof < 0.40f && result.avgBlur < 0.60f && result.avgNsfw < 0.50f && LivenessDetector.blinkDetected)
 
                                         if (result.triggerSuccess) {
                                             FaceState.onVerificationSuccess?.invoke(croppedFace, rotatedBitmap)

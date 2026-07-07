@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,12 +75,14 @@ private fun handleVerificationSuccess(
 
         if (CurrentEmployee.isRegisterMode) {
             EmployeeRepository.addEmployee(
+                context,
                 Employee(
                     employeeId = CurrentEmployee.employeeId,
                     employeeName = CurrentEmployee.employeeName,
                     imagePath = fileName
                 )
             )
+            RecognitionHelper.loadEmbeddings(context, faceNetHelper)
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(
@@ -146,6 +149,7 @@ private fun handleVerificationSuccess(
 
             if (matchedName != "Unknown" && matchScore > 0.60f) {
                 AttendanceRepository.addRecord(
+                    context,
                     AttendanceRecord(
                         employeeName = matchedName,
                         imagePath = fileName,
@@ -183,6 +187,7 @@ private fun handleVerificationSuccess(
                 }
             } else {
                 AttendanceRepository.addRecord(
+                    context,
                     AttendanceRecord(
                         employeeName = "Unknown",
                         imagePath = fileName,
@@ -226,7 +231,8 @@ private fun handleVerificationSuccess(
 
 @Composable
 fun CameraScreen(
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -263,6 +269,19 @@ fun CameraScreen(
         modifier = Modifier.fillMaxSize()
     ) {
         CameraPreview()
+
+        Button(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 40.dp, start = 16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Black.copy(alpha = 0.5f),
+                contentColor = Color.White
+            )
+        ) {
+            Text("< Back")
+        }
 
         // Viewfinder Border
         Box(
@@ -468,8 +487,8 @@ fun CameraScreen(
                             val nsfwScore = FaceState.getAverageNsfw()
                             Log.d("CAPTURE_DEBUG", "Metrics: Blur=$blurScore, NSFW=$nsfwScore")
 
-                            // Block if safety average is <= 0.50f
-                            if (nsfwScore < 0.50f) {
+                            // Block if NSFW average is > 0.50f
+                            if (nsfwScore > 0.50f) {
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(
                                         context,
@@ -522,12 +541,14 @@ fun CameraScreen(
                                                     if (CurrentEmployee.isRegisterMode) {
                                                         Log.d("CAPTURE_DEBUG", "Registering employee: ${CurrentEmployee.employeeName}")
                                                         EmployeeRepository.addEmployee(
+                                                            context,
                                                             Employee(
                                                                 employeeId = CurrentEmployee.employeeId,
                                                                 employeeName = CurrentEmployee.employeeName,
                                                                 imagePath = fileName
                                                             )
                                                         )
+                                                        RecognitionHelper.loadEmbeddings(context, faceNetHelper)
 
                                                         withContext(Dispatchers.Main) {
                                                             Toast.makeText(
@@ -561,6 +582,7 @@ fun CameraScreen(
 
                                                         if (matchedName.isNotEmpty() && matchedName != "Unknown" && matchScore > 0.60f) {
                                                             AttendanceRepository.addRecord(
+                                                                context,
                                                                 AttendanceRecord(
                                                                     employeeName = matchedName,
                                                                     imagePath = fileName,
@@ -598,6 +620,7 @@ fun CameraScreen(
                                                             }
                                                         } else {
                                                             AttendanceRepository.addRecord(
+                                                                context,
                                                                 AttendanceRecord(
                                                                     employeeName = "Unknown",
                                                                     imagePath = fileName,

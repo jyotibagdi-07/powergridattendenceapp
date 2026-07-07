@@ -26,10 +26,10 @@ object FaceState {
         mutableStateOf<Float?>(0.0f)
 
     val liveBlurScore =
-        mutableStateOf<Float?>(1.0f)
+        mutableStateOf<Float?>(0.0f)
 
     val liveNsfwScore =
-        mutableStateOf<Float?>(1.0f)
+        mutableStateOf<Float?>(0.0f)
 
     val isLiveVerified =
         mutableStateOf(false)
@@ -53,8 +53,8 @@ object FaceState {
     var onSoftAlert: ((String) -> Unit)? = null
 
     private val spoofHistory = MutableList(10) { 0.0f }
-    private val blurHistory = MutableList(10) { 1.0f }
-    private val nsfwSafetyHistory = MutableList(10) { 1.0f }
+    private val blurHistory = MutableList(10) { 0.0f }
+    private val nsfwSafetyHistory = MutableList(10) { 0.0f }
 
     private var consecutivePassesStreakInternal = 0
     private var attendanceVerifiedInternal = false
@@ -84,8 +84,8 @@ object FaceState {
             val avgNsfw = nsfwSafetyHistory.average().toFloat()
 
             // Ultra-Relaxed Thresholds for Speed
-            val blurPass = avgBlur > 0.20f 
-            val nsfwPass = avgNsfw > 0.30f 
+            val blurPass = avgBlur < 0.80f 
+            val nsfwPass = avgNsfw < 0.70f 
             val spoofPass = avgSpoof < 0.65f 
 
             var warningText: String? = null
@@ -95,11 +95,12 @@ object FaceState {
                 warningText = if (!blurPass) "Image Blurry" else "Adjust Lighting"
             } else if (spoofPass) {
                 if (!LivenessDetector.blinkDetected) {
-                    warningText = "Blink to Mark Attendance"
+                    warningText = "Blink to Verify Liveness"
                 } else {
-                    // INSTANT TRIGGER: Once blink is detected and scores are okay
+                    // Liveness verified but don't auto-trigger, let user click capture
                     attendanceVerifiedInternal = true
-                    triggerSuccess = true
+                    triggerSuccess = false
+                    warningText = "Liveness Verified! Click Capture"
                 }
             } else {
                 consecutivePassesStreakInternal = 0
@@ -170,17 +171,18 @@ object FaceState {
             spoofHistory.clear()
             repeat(10) { spoofHistory.add(0.0f) }
             blurHistory.clear()
-            repeat(10) { blurHistory.add(1.0f) }
+            repeat(10) { blurHistory.add(0.0f) }
             nsfwSafetyHistory.clear()
-            repeat(10) { nsfwSafetyHistory.add(1.0f) }
+            repeat(10) { nsfwSafetyHistory.add(0.0f) }
 
             consecutivePassesStreakInternal = 0
             attendanceVerifiedInternal = false
+            LivenessDetector.reset()
         }
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             liveSpoofScore.value = 0.0f
-            liveBlurScore.value = 1.0f
-            liveNsfwScore.value = 1.0f
+            liveBlurScore.value = 0.0f
+            liveNsfwScore.value = 0.0f
             isLiveVerified.value = false
             isFullFaceVisible.value = false
             consecutivePassesStreak.value = 0

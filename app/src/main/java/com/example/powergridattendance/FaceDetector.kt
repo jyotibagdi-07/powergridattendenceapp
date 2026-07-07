@@ -50,6 +50,8 @@ class FaceDetectorHelper {
     private val detector =
         FaceDetection.getClient(options)
 
+    var lastDetectedFace: com.google.mlkit.vision.face.Face? = null
+
     fun detectFace(
         image: InputImage,
         onComplete: () -> Unit
@@ -61,6 +63,7 @@ class FaceDetectorHelper {
 
                 if (faces.isNotEmpty()) {
                     val face = faces[0]
+                    lastDetectedFace = face
                     val box = face.boundingBox
                     val imageWidth = image.width
                     val imageHeight = image.height
@@ -91,6 +94,7 @@ class FaceDetectorHelper {
                     )
 
                 } else {
+                    lastDetectedFace = null
 
                     FaceState.faceDetected.value = false
                     FaceState.faceRect.value = null
@@ -106,6 +110,7 @@ class FaceDetectorHelper {
             }
 
             .addOnFailureListener { e ->
+                lastDetectedFace = null
 
                 Log.e(
                     "FACE_TEST",

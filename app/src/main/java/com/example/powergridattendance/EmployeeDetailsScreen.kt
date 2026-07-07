@@ -11,6 +11,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.asImageBitmap
 
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+
 @Composable
 fun EmployeeDetailsScreen(
     onBack: () -> Unit
@@ -24,18 +27,27 @@ fun EmployeeDetailsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .statusBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
     ) {
 
-        Button(onClick = onBack) {
-            Text("Back")
+        Button(
+            onClick = onBack,
+            modifier = Modifier.align(Alignment.Start),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        ) {
+            Text("< Back")
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Text(
             text = "Employee Details",
-            style = MaterialTheme.typography.headlineSmall
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
         )
 
         Spacer(modifier = Modifier.height(16.dp))

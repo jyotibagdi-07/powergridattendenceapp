@@ -19,7 +19,7 @@ object LivenessDetector {
 
         // ML Kit returns -1 if classification is not initialized or failed
         if (leftOpen != -1.0f && rightOpen != -1.0f) {
-            if (leftOpen < 0.6f && rightOpen < 0.6f) { // Very high sensitivity
+            if (leftOpen < 0.35f && rightOpen < 0.35f) { // Accurate blink threshold
                 blinkDetected = true
                 Log.d("LIVENESS_DEBUG", "BLINK DETECTED!")
             }

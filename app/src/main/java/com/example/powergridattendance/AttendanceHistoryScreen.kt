@@ -27,8 +27,14 @@ fun AttendanceHistoryScreen(
             .padding(16.dp)
     ) {
 
-        Button(onClick = onBack) {
-            Text("Back")
+        Button(
+            onClick = onBack,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        ) {
+            Text("< Back")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
