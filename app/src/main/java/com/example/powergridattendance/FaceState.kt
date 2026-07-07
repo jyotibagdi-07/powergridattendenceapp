@@ -86,7 +86,7 @@ object FaceState {
             // Ultra-Relaxed Thresholds for Speed
             val blurPass = avgBlur < 0.80f 
             val nsfwPass = avgNsfw < 0.70f 
-            val spoofPass = avgSpoof < 0.40f 
+            val spoofPass = avgSpoof < 0.60f 
 
             var warningText: String? = null
             var triggerSuccess = false

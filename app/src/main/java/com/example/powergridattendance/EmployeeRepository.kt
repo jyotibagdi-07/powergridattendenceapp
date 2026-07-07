@@ -13,7 +13,20 @@ object EmployeeRepository {
 
     fun init(context: Context) {
         if (isInitialized) return
-        loadEmployees(context)
+        try {
+            val file = File(context.filesDir, "employees.json")
+            if (file.exists()) {
+                file.delete()
+            }
+            context.filesDir.listFiles()?.forEach { f ->
+                if (f.name.endsWith("_face.jpg") || f.name == "attendance.jpg") {
+                    f.delete()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("EmployeeRepository", "Error clearing employees on init", e)
+        }
+        employees.clear()
         isInitialized = true
     }
 

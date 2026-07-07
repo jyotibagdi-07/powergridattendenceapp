@@ -116,7 +116,7 @@ private fun handleVerificationSuccess(
             }
 
             // Anti-spoofing validation check before marking attendance
-            if (spoofScore >= 0.40f) {
+            if (spoofScore >= 0.60f) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
@@ -513,8 +513,8 @@ fun CameraScreen(
 
 
 
-                                                // Block if spoof average is >= 0.40f (meaning spoof is detected)
-                                                if (!CurrentEmployee.isRegisterMode && spoofScore >= 0.40f) {
+                                                // Block if spoof average is >= 0.60f (meaning spoof is detected)
+                                                if (!CurrentEmployee.isRegisterMode && spoofScore >= 0.60f) {
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                             context,

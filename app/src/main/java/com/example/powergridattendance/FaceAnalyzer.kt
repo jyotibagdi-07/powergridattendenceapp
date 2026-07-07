@@ -177,8 +177,8 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                         FaceState.consecutivePassesStreak.value = result.streak
                                         FaceState.attendanceVerified.value = result.verified
 
-                                        // Update UI color indicator immediately: spoof < 0.40f, blurriness < 0.60f, NSFW < 0.50f, and blink detected
-                                        FaceState.isLiveVerified.value = (result.avgSpoof < 0.40f && result.avgBlur < 0.60f && result.avgNsfw < 0.50f && LivenessDetector.blinkDetected)
+                                        // Update UI color indicator immediately: spoof < 0.60f, blurriness < 0.60f, NSFW < 0.50f, and blink detected
+                                        FaceState.isLiveVerified.value = (result.avgSpoof < 0.60f && result.avgBlur < 0.60f && result.avgNsfw < 0.50f && LivenessDetector.blinkDetected)
 
                                         if (result.triggerSuccess) {
                                             FaceState.onVerificationSuccess?.invoke(croppedFace, rotatedBitmap)
