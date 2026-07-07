@@ -511,10 +511,7 @@ fun CameraScreen(
                                                 var spoofScore = FaceState.getAverageSpoof()
                                                 Log.d("CAPTURE_DEBUG", "Spoof: $spoofScore, LiveVerified: ${FaceState.isLiveVerified.value}")
 
-                                                if (FaceState.isLiveVerified.value || FaceState.attendanceVerified.value) {
-                                                    spoofScore = 0.0f // Bypass: set to minimum spoof probability (0.0f)
-                                                    Log.d("TEST_SPOOF", "Bypassed spoof check as face liveness is verified. Overridden spoof score to $spoofScore")
-                                                }
+
 
                                                 // Block if spoof average is >= 0.40f (meaning spoof is detected)
                                                 if (!CurrentEmployee.isRegisterMode && spoofScore >= 0.40f) {

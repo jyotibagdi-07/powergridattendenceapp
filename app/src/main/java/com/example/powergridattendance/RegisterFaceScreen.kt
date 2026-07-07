@@ -70,15 +70,24 @@ fun RegisterFaceScreen(
                     employeeId.isNotBlank() &&
                     employeeName.isNotBlank()
                 ) {
+                    val trimmedId = employeeId.trim()
+                    if (EmployeeRepository.getEmployeeById(trimmedId) != null) {
+                        Toast.makeText(
+                            context,
+                            "Employee ID already registered!",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@Button
+                    }
 
                     CurrentEmployee.employeeId =
-                        employeeId
+                        trimmedId
 
                     CurrentEmployee.employeeName =
                         employeeName
 
                     CurrentEmployee.capturedFileName =
-                        "${employeeId}_face.jpg"
+                        "${trimmedId}_face.jpg"
 
                     CurrentEmployee.isRegisterMode = true
 

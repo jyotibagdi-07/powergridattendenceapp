@@ -112,10 +112,6 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                         }
                                     }
 
-                                    // 3. Algorithmic Anti-Glare Scanner (HSV color space thresholding)
-                                    val glareRatio = calculateGlareRatio(croppedFace)
-                                    val glareAttackDetected = glareRatio > 0.18f
-
                                     // Bezel & display border scanner
                                     val bezelEdgeDetected = LivenessDetector.detectPhoneEdges(rotatedBitmap, rotatedRect) ||
                                             LivenessDetector.detectPhoneBezelContours(rotatedBitmap, rotatedRect)
@@ -125,15 +121,17 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                     val glareSpoof = LivenessDetector.detectScreenGlare(croppedFace)
                                     val edgeSpoof = if (bezelEdgeDetected) 0.95f else 0.0f
 
-                                    val presentationAttackDetected = glareSpoof > 0.15f || edgeSpoof > 0f || glareAttackDetected || isStaticAttack
+                                    // Use glareSpoof (>0.15) for glare attack detection to filter by saturation
+                                    val glareAttackDetected = glareSpoof > 0.15f
+                                    val presentationAttackDetected = glareAttackDetected || edgeSpoof > 0f || isStaticAttack
                                     if (presentationAttackDetected) {
                                         withContext(Dispatchers.Main) {
                                             LivenessDetector.reset()
                                         }
                                     }
 
-                                    // Override combined spoof score to 0.99f if any presentation/glare/bezel/static attack is detected
-                                    val combinedSpoof = if (presentationAttackDetected) 0.99f else maxOf(0.6f * tfliteSpoof + 0.4f * hsvSpoof, glareSpoof, edgeSpoof)
+                                    // Override combined spoof score to 0.99f if any presentation/glare/bezel/static attack is detected. Use maxOf to avoid diluting NN model scores.
+                                    val combinedSpoof = if (presentationAttackDetected) 0.99f else maxOf(tfliteSpoof, hsvSpoof, glareSpoof, edgeSpoof)
                                     val rawSpoofScore = combinedSpoof
 
                                     // Laplacian Variance Blur Calculation (higher = blurrier)
@@ -219,24 +217,5 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
         }
     }
 
-    // HSV glare ratio calculation: Value (V) exceeds 230 (on [0, 255] scale)
-    private fun calculateGlareRatio(croppedFace: Bitmap): Float {
-        val width = croppedFace.width
-        val height = croppedFace.height
-        val pixels = IntArray(width * height)
-        croppedFace.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        val hsv = FloatArray(3)
-        var glarePixels = 0
-
-        for (color in pixels) {
-            android.graphics.Color.colorToHSV(color, hsv)
-            val v = hsv[2] * 255f
-            if (v > 230f) {
-                glarePixels++
-            }
-        }
-
-        return glarePixels.toFloat() / pixels.size
-    }
 }
