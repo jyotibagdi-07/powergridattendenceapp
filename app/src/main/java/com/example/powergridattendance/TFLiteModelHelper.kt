@@ -19,6 +19,12 @@ class TFLiteModelHelper(
     private var inputHeight = 224
     private var isNCHW = false // Auto-detected structural configuration flag
 
+    // Pre-allocated buffers for zero-allocation prediction loop
+    private lateinit var pixelsBuffer: IntArray
+    private lateinit var inputBuffer: ByteBuffer
+    private var outputSize = 2
+    private lateinit var outputArray: Array<FloatArray>
+
     init {
         try {
             val afd = context.assets.openFd(modelName)
@@ -49,6 +55,17 @@ class TFLiteModelHelper(
 
             Log.d("MODEL_INIT_SUCCESS", "$modelName configuration: isNCHW=$isNCHW, Dimensions=[$inputHeight x $inputWidth]")
 
+            // Pre-allocate pixel and ByteBuffers
+            val totalPixels = inputWidth * inputHeight
+            pixelsBuffer = IntArray(totalPixels)
+            inputBuffer = ByteBuffer.allocateDirect(1 * 3 * totalPixels * 4).apply {
+                order(ByteOrder.nativeOrder())
+            }
+
+            val outputShape = interpreter!!.getOutputTensor(0).shape()
+            outputSize = outputShape.last()
+            outputArray = Array(1) { FloatArray(outputSize) }
+
         } catch (e: Exception) {
             Log.e("MODEL_LOAD", "FAILED to provision interpreter for $modelName", e)
         }
@@ -59,54 +76,47 @@ class TFLiteModelHelper(
             return -1f
         }
 
-        // 1. Rescale bitmap layer cleanly to fit current model dimensions
+        // 1. Rescale bitmap layer cleanly to fit current model dimensions (unavoidable allocation)
         val resizedBitmap = Bitmap.createScaledBitmap(bitmap, inputWidth, inputHeight, true)
-        val pixels = IntArray(inputWidth * inputHeight)
-        resizedBitmap.getPixels(pixels, 0, inputWidth, 0, 0, inputWidth, inputHeight)
+        
+        // Use pre-allocated pixelsBuffer array instead of fresh allocations
+        resizedBitmap.getPixels(pixelsBuffer, 0, inputWidth, 0, 0, inputWidth, inputHeight)
 
-        // 2. Allocate native memory (1 batch * 3 channels * height * width * 4 bytes per Float32)
-        val inputBuffer = ByteBuffer.allocateDirect(1 * 3 * inputWidth * inputHeight * 4)
-        inputBuffer.order(ByteOrder.nativeOrder())
+        // 2. Rewind pre-allocated native input buffer
         inputBuffer.rewind()
 
-        // 3. Transform and stream pixel metrics matching discovered memory map signature
+        // 3. Transform and stream pixel metrics directly into the native input buffer (Zero allocation loop)
+        val totalPixels = inputWidth * inputHeight
         if (isNCHW) {
-            // Channel-First Structure: Stream full Red plane, then full Green plane, then full Blue plane
-            val totalPixels = pixels.size
-            val rArr = FloatArray(totalPixels)
-            val gArr = FloatArray(totalPixels)
-            val bArr = FloatArray(totalPixels)
-
-            for (i in pixels.indices) {
-                val pixel = pixels[i]
+            // Channel-First Structure: Stream Red plane, then Green plane, then Blue plane
+            for (i in 0 until totalPixels) {
+                val pixel = pixelsBuffer[i]
                 val r = ((pixel shr 16) and 0xFF) / 255f
                 val g = ((pixel shr 8) and 0xFF) / 255f
                 val b = (pixel and 0xFF) / 255f
 
+                val nr: Float
+                val ng: Float
+                val nb: Float
                 if (modelName == "spoof_model.tflite") {
-                    // Apply PyTorch ImageNet normalization: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    rArr[i] = (r - 0.485f) / 0.229f
-                    gArr[i] = (g - 0.456f) / 0.224f
-                    bArr[i] = (b - 0.406f) / 0.225f
-
-                    if (i == 0) {
-                        Log.d("MODEL_DEBUG", "First pixel normalized (NCHW): R=${rArr[i]}, G=${gArr[i]}, B=${bArr[i]}")
-                    }
+                    nr = (r - 0.485f) / 0.229f
+                    ng = (g - 0.456f) / 0.224f
+                    nb = (b - 0.406f) / 0.225f
                 } else {
-                    rArr[i] = r
-                    gArr[i] = g
-                    bArr[i] = b
+                    nr = r
+                    ng = g
+                    nb = b
                 }
+
+                // Write directly to bytebuffer at correct channel offsets (R, G, B)
+                inputBuffer.putFloat(i * 4, nr)
+                inputBuffer.putFloat((totalPixels + i) * 4, ng)
+                inputBuffer.putFloat((2 * totalPixels + i) * 4, nb)
             }
-
-            for (v in rArr) inputBuffer.putFloat(v)
-            for (v in gArr) inputBuffer.putFloat(v)
-            for (v in bArr) inputBuffer.putFloat(v)
-
         } else {
-            // Channel-Last Structure: Stream color tokens sequentially inline [R1, G1, B1, R2, G2, B2...]
-            for (i in pixels.indices) {
-                val pixel = pixels[i]
+            // Channel-Last Structure: Stream color tokens sequentially [R1, G1, B1...]
+            for (i in 0 until totalPixels) {
+                val pixel = pixelsBuffer[i]
                 val r = ((pixel shr 16) and 0xFF) / 255f
                 val g = ((pixel shr 8) and 0xFF) / 255f
                 val b = (pixel and 0xFF) / 255f
@@ -118,9 +128,6 @@ class TFLiteModelHelper(
                     inputBuffer.putFloat(nr)
                     inputBuffer.putFloat(ng)
                     inputBuffer.putFloat(nb)
-                    if (i == 0) {
-                        Log.d("MODEL_DEBUG", "First pixel normalized (NHWC): R=$nr, G=$ng, B=$nb")
-                    }
                 } else {
                     inputBuffer.putFloat(r)
                     inputBuffer.putFloat(g)
@@ -129,32 +136,27 @@ class TFLiteModelHelper(
             }
         }
 
-        // 4. Resolve output properties
-        val outputShape = interpreter!!.getOutputTensor(0).shape()
-        val outputSize = outputShape.last()
-        val output = Array(1) { FloatArray(outputSize) }
-
+        // 4. Run inference using pre-allocated outputArray
         inputBuffer.rewind()
-        interpreter!!.run(inputBuffer, output)
+        interpreter!!.run(inputBuffer, outputArray)
 
         // 5. Evaluate and route logit tensors
         if (outputSize == 2) {
-            val class0 = output[0][0]
-            val class1 = output[0][1]
+            val class0 = outputArray[0][0]
+            val class1 = outputArray[0][1]
 
             Log.d("RAW_OUTPUT_LOGITS", "$modelName raw components: class0=$class0, class1=$class1")
 
             val exp0 = exp(class0.toDouble())
             val exp1 = exp(class1.toDouble())
             val sum = exp0 + exp1
-            // Class 0 = Safe/Real Person; Class 1 = Unsafe/Glare (NSFW)
             val prob1 = (exp1 / sum).toFloat() // Softmax probability for Class 1 (Unsafe/NSFW/Spoof)
 
             Log.d("MODEL_SCORE_EVAL", "$modelName computed score=$prob1")
             return prob1
         }
 
-        val score = output[0][0]
+        val score = outputArray[0][0]
         Log.d("MODEL_SCORE_EVAL", "$modelName computed score=$score")
         return score
     }

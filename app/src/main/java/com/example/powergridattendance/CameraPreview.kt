@@ -28,6 +28,7 @@ fun CameraPreview() {
     DisposableEffect(Unit) {
         onDispose {
             analysisExecutor.shutdown()
+            CameraState.isCameraPreviewStreaming.set(false)
         }
     }
 
@@ -41,6 +42,12 @@ fun CameraPreview() {
                 } else {
                     PreviewView.ScaleType.FILL_CENTER
                 }
+            }
+
+            previewView.previewStreamState.observe(lifecycleOwner) { streamState ->
+                val isStreaming = streamState == PreviewView.StreamState.STREAMING
+                CameraState.isCameraPreviewStreaming.set(isStreaming)
+                Log.d("CAMERA_STREAM", "Stream state changed: $streamState (isStreaming=$isStreaming)")
             }
 
             // Pre-initialization permission guard rail to prevent OpOpsCamera crash

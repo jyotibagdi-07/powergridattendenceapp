@@ -13,7 +13,15 @@ object AttendanceRepository {
 
     fun init(context: Context) {
         if (isInitialized) return
-        loadRecords(context)
+        try {
+            val file = File(context.filesDir, "attendance_records.json")
+            if (file.exists()) {
+                file.delete()
+            }
+        } catch (e: Exception) {
+            Log.e("AttendanceRepository", "Error clearing attendance records on init", e)
+        }
+        records.clear()
         isInitialized = true
     }
 
