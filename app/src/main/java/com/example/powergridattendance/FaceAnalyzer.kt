@@ -142,16 +142,16 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                         }
 
                                          // Bezel & display border scanner (pass full unrotated rawBitmap and clampedRect relative to it)
-                                         bezelEdgeDetected = false
-
+                                         bezelEdgeDetected = LivenessDetector.detectPhoneEdges(rawBitmap, clampedRect)
+ 
                                          val tfliteSpoof = spoofHelper.predict(croppedFace)
                                          val hsvSpoof = LivenessDetector.analyzeHSVSpoof(croppedFace)
                                          val glareSpoof = LivenessDetector.detectScreenGlare(croppedFace)
                                          val edgeSpoof = if (bezelEdgeDetected) 0.95f else 0.0f
-
+ 
                                          // Use glareSpoof (>0.15) for glare attack detection to filter by saturation (prevent false positives on light backgrounds)
                                          glareAttackDetected = glareSpoof > 0.15f
-                                         screenTextureDetected = false
+                                         screenTextureDetected = LivenessDetector.detectScreenTexture(croppedFace)
                                          val presentationAttackDetected = glareAttackDetected || edgeSpoof > 0f || isStaticAttack || screenTextureDetected
 
                                         // Override combined spoof score to 0.01f if any presentation attack is detected. Use minOf to combine real human probabilities (high is real).
@@ -189,7 +189,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                         FaceState.liveBlurScore.value = result.avgBlur
                                         FaceState.liveNsfwScore.value = result.avgNsfw
 
-                                        if (!CurrentEmployee.isRegisterMode && name != "Unknown" && score > 0.48f) {
+                                        if (!CurrentEmployee.isRegisterMode && name != "Unknown" && score > 0.42f) {
                                             RecognitionState.recognizedName.value = name
                                             RecognitionState.matchScore.value = score
                                             RecognitionState.faceMatched.value = true

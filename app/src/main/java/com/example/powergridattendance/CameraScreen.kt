@@ -112,7 +112,7 @@ private fun handleVerificationSuccess(
             withContext(Dispatchers.Main) {
                 RecognitionState.recognizedName.value = matchedNameResult
                 RecognitionState.matchScore.value = matchScoreResult
-                RecognitionState.faceMatched.value = matchedNameResult != "Unknown" && matchScoreResult > 0.48f
+                RecognitionState.faceMatched.value = matchedNameResult != "Unknown" && matchScoreResult > 0.42f
             }
 
             // Anti-spoofing validation check before marking attendance (reject if real human score is below 0.45f)
@@ -147,7 +147,7 @@ private fun handleVerificationSuccess(
             val matchedName = matchedNameResult
             val matchScore = matchScoreResult
 
-            if (matchedName != "Unknown" && matchScore > 0.48f) {
+            if (matchedName != "Unknown" && matchScore > 0.42f) {
                 AttendanceRepository.addRecord(
                     context,
                     AttendanceRecord(
@@ -576,7 +576,7 @@ fun CameraScreen(
                                                             Locale.getDefault()
                                                         ).format(Date())
 
-                                                        if (matchedName.isNotEmpty() && matchedName != "Unknown" && matchScore > 0.48f) {
+                                                        if (matchedName.isNotEmpty() && matchedName != "Unknown" && matchScore > 0.42f) {
                                                             AttendanceRepository.addRecord(
                                                                 context,
                                                                 AttendanceRecord(
