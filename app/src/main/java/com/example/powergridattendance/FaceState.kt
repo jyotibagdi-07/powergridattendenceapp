@@ -3,6 +3,8 @@ package com.example.powergridattendance
 import android.graphics.Bitmap
 import android.graphics.Rect
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class MetricUpdateResult(
     val avgSpoof: Float,
@@ -52,41 +54,44 @@ object FaceState {
     var onVerificationSuccess: ((croppedFace: Bitmap, fullBitmap: Bitmap) -> Unit)? = null
     var onSoftAlert: ((String) -> Unit)? = null
 
-    private val spoofHistory = MutableList(10) { 0.0f }
-    private val blurHistory = MutableList(10) { 0.0f }
-    private val nsfwSafetyHistory = MutableList(10) { 0.0f }
+    private val spoofHistory = mutableListOf<Float>()
+    private val blurHistory = mutableListOf<Float>()
+    private val nsfwSafetyHistory = mutableListOf<Float>()
 
     private var consecutivePassesStreakInternal = 0
     private var attendanceVerifiedInternal = false
 
-    fun updateMetrics(spoof: Float, blur: Float, nsfw: Float): MetricUpdateResult {
-        synchronized(this) {
-            // Evict the oldest historical score element (index 0 / FIFO approach)
-            if (spoofHistory.isNotEmpty()) {
+    suspend fun updateMetrics(spoof: Float, blur: Float, nsfw: Float): MetricUpdateResult = withContext(Dispatchers.IO) {
+        synchronized(this@FaceState) {
+            // Evict the oldest historical score element (FIFO approach) if size limit is reached
+            if (spoofHistory.size >= 10) {
                 spoofHistory.removeAt(0)
             }
-            // Append the newly computed frame score to the tail of the array
+            // Append the newly computed frame score to the tail of the list
             spoofHistory.add(spoof)
 
-            if (blurHistory.isNotEmpty()) {
+            if (blurHistory.size >= 10) {
                 blurHistory.removeAt(0)
             }
             blurHistory.add(blur)
 
-            if (nsfwSafetyHistory.isNotEmpty()) {
+            if (nsfwSafetyHistory.size >= 10) {
                 nsfwSafetyHistory.removeAt(0)
             }
             nsfwSafetyHistory.add(nsfw)
 
-            // Calculate the true rolling average across the updated 10-frame buffer array
-            val avgSpoof = spoofHistory.average().toFloat()
-            val avgBlur = blurHistory.average().toFloat()
-            val avgNsfw = nsfwSafetyHistory.average().toFloat()
+            // Calculate the true rolling average across the active historical buffer elements
+            val avgSpoof = if (spoofHistory.isNotEmpty()) spoofHistory.average().toFloat() else 0.0f
+            val avgBlur = if (blurHistory.isNotEmpty()) blurHistory.average().toFloat() else 0.0f
+            val avgNsfw = if (nsfwSafetyHistory.isNotEmpty()) nsfwSafetyHistory.average().toFloat() else 0.0f
 
-            // Ultra-Relaxed Thresholds for Speed
-            val blurPass = avgBlur < 0.80f 
+            // Corrected Thresholds:
+            // - avgBlur must be strictly LESS than 0.92f (clarityPass)
+            // - avgNsfw must be strictly LESS than 0.70f (attack/NSFW probability)
+            // - avgSpoof must be strictly GREATER than 0.45f (since spoofScore represents Real Human probability, relaxed for webcams)
+            val blurPass = avgBlur < 0.92f 
             val nsfwPass = avgNsfw < 0.70f 
-            val spoofPass = avgSpoof < 0.60f 
+            val spoofPass = avgSpoof > 0.45f 
 
             var warningText: String? = null
             var triggerSuccess = false
@@ -106,7 +111,7 @@ object FaceState {
                 consecutivePassesStreakInternal = 0
                 warningText = "Liveness Failed"
             }
-            return MetricUpdateResult(
+            return@synchronized MetricUpdateResult(
                 avgSpoof = avgSpoof,
                 avgBlur = avgBlur,
                 avgNsfw = avgNsfw,
@@ -118,62 +123,68 @@ object FaceState {
         }
     }
 
-    fun addSpoofScore(score: Float) {
-        synchronized(this) {
-            if (spoofHistory.isNotEmpty()) {
+    suspend fun addSpoofScore(score: Float) = withContext(Dispatchers.IO) {
+        synchronized(this@FaceState) {
+            if (spoofHistory.size >= 10) {
                 spoofHistory.removeAt(0)
             }
             spoofHistory.add(score)
-            liveSpoofScore.value = spoofHistory.average().toFloat()
+            val calculatedAvg = if (spoofHistory.isNotEmpty()) spoofHistory.average().toFloat() else 0.0f
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                liveSpoofScore.value = calculatedAvg
+            }
         }
     }
 
-    fun addBlurScore(score: Float) {
-        synchronized(this) {
-            if (blurHistory.isNotEmpty()) {
+    suspend fun addBlurScore(score: Float) = withContext(Dispatchers.IO) {
+        synchronized(this@FaceState) {
+            if (blurHistory.size >= 10) {
                 blurHistory.removeAt(0)
             }
             blurHistory.add(score)
-            liveBlurScore.value = blurHistory.average().toFloat()
+            val calculatedAvg = if (blurHistory.isNotEmpty()) blurHistory.average().toFloat() else 0.0f
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                liveBlurScore.value = calculatedAvg
+            }
         }
     }
 
-    fun addNsfwScore(score: Float) {
-        synchronized(this) {
-            if (nsfwSafetyHistory.isNotEmpty()) {
+    suspend fun addNsfwScore(score: Float) = withContext(Dispatchers.IO) {
+        synchronized(this@FaceState) {
+            if (nsfwSafetyHistory.size >= 10) {
                 nsfwSafetyHistory.removeAt(0)
             }
             nsfwSafetyHistory.add(score)
-            liveNsfwScore.value = nsfwSafetyHistory.average().toFloat()
+            val calculatedAvg = if (nsfwSafetyHistory.isNotEmpty()) nsfwSafetyHistory.average().toFloat() else 0.0f
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                liveNsfwScore.value = calculatedAvg
+            }
         }
     }
 
     fun getAverageSpoof(): Float {
         synchronized(this) {
-            return spoofHistory.average().toFloat()
+            return if (spoofHistory.isNotEmpty()) spoofHistory.average().toFloat() else 0.0f
         }
     }
 
     fun getAverageBlur(): Float {
         synchronized(this) {
-            return blurHistory.average().toFloat()
+            return if (blurHistory.isNotEmpty()) blurHistory.average().toFloat() else 0.0f
         }
     }
 
     fun getAverageNsfw(): Float {
         synchronized(this) {
-            return nsfwSafetyHistory.average().toFloat()
+            return if (nsfwSafetyHistory.isNotEmpty()) nsfwSafetyHistory.average().toFloat() else 0.0f
         }
     }
 
     fun clearHistory() {
         synchronized(this) {
             spoofHistory.clear()
-            repeat(10) { spoofHistory.add(0.0f) }
             blurHistory.clear()
-            repeat(10) { blurHistory.add(0.0f) }
             nsfwSafetyHistory.clear()
-            repeat(10) { nsfwSafetyHistory.add(0.0f) }
 
             consecutivePassesStreakInternal = 0
             attendanceVerifiedInternal = false

@@ -16,28 +16,8 @@ object CapturedFaceProcessor {
         MLKitPhotoHelper.detectFaceInBitmap(
             bitmap = bitmap,
 
-            onSuccess = { rect ->
-
-                val croppedFace =
-                    FaceCropHelper.cropFace(
-                        bitmap,
-                        rect
-                    )
-
-                if (croppedFace != null) {
-
-                    onSuccess(croppedFace)
-
-                } else {
-
-                    Toast.makeText(
-                        context,
-                        "Face Crop Failed",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    onFailure()
-                }
+            onSuccess = { croppedFace ->
+                onSuccess(croppedFace)
             },
 
             onFailure = {

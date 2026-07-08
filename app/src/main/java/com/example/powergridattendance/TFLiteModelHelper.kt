@@ -87,39 +87,57 @@ class TFLiteModelHelper(
 
         // 3. Transform and stream pixel metrics directly into the native input buffer (Zero allocation loop)
         val totalPixels = inputWidth * inputHeight
+        
+        var totalLuminance = 0f
+        for (i in 0 until totalPixels) {
+            val pixel = pixelsBuffer[i]
+            val r = ((pixel shr 16) and 0xFF) / 255f
+            val g = ((pixel shr 8) and 0xFF) / 255f
+            val b = (pixel and 0xFF) / 255f
+            totalLuminance += 0.299f * r + 0.587f * g + 0.114f * b
+        }
+        val avgLuminance = totalLuminance / totalPixels
+        val scale = 1.0f
+
         if (isNCHW) {
-            // Channel-First Structure: Stream Red plane, then Green plane, then Blue plane
+            // Channel-First Structure: Stream Red plane, then Green plane, then Blue plane sequentially using relative writes
             for (i in 0 until totalPixels) {
                 val pixel = pixelsBuffer[i]
-                val r = ((pixel shr 16) and 0xFF) / 255f
-                val g = ((pixel shr 8) and 0xFF) / 255f
-                val b = (pixel and 0xFF) / 255f
-
-                val nr: Float
-                val ng: Float
-                val nb: Float
-                if (modelName == "spoof_model.tflite") {
-                    nr = (r - 0.485f) / 0.229f
-                    ng = (g - 0.456f) / 0.224f
-                    nb = (b - 0.406f) / 0.225f
+                val r = (((pixel shr 16) and 0xFF) / 255f) * scale
+                val nr = if (modelName == "spoof_model.tflite") {
+                    (r - 0.485f) / 0.229f
                 } else {
-                    nr = r
-                    ng = g
-                    nb = b
+                    r
                 }
-
-                // Write directly to bytebuffer at correct channel offsets (R, G, B)
-                inputBuffer.putFloat(i * 4, nr)
-                inputBuffer.putFloat((totalPixels + i) * 4, ng)
-                inputBuffer.putFloat((2 * totalPixels + i) * 4, nb)
+                inputBuffer.putFloat(nr)
+            }
+            for (i in 0 until totalPixels) {
+                val pixel = pixelsBuffer[i]
+                val g = (((pixel shr 8) and 0xFF) / 255f) * scale
+                val ng = if (modelName == "spoof_model.tflite") {
+                    (g - 0.456f) / 0.224f
+                } else {
+                    g
+                }
+                inputBuffer.putFloat(ng)
+            }
+            for (i in 0 until totalPixels) {
+                val pixel = pixelsBuffer[i]
+                val b = ((pixel and 0xFF) / 255f) * scale
+                val nb = if (modelName == "spoof_model.tflite") {
+                    (b - 0.406f) / 0.225f
+                } else {
+                    b
+                }
+                inputBuffer.putFloat(nb)
             }
         } else {
             // Channel-Last Structure: Stream color tokens sequentially [R1, G1, B1...]
             for (i in 0 until totalPixels) {
                 val pixel = pixelsBuffer[i]
-                val r = ((pixel shr 16) and 0xFF) / 255f
-                val g = ((pixel shr 8) and 0xFF) / 255f
-                val b = (pixel and 0xFF) / 255f
+                val r = (((pixel shr 16) and 0xFF) / 255f) * scale
+                val g = (((pixel shr 8) and 0xFF) / 255f) * scale
+                val b = ((pixel and 0xFF) / 255f) * scale
 
                 if (modelName == "spoof_model.tflite") {
                     val nr = (r - 0.485f) / 0.229f
@@ -150,10 +168,16 @@ class TFLiteModelHelper(
             val exp0 = exp(class0.toDouble())
             val exp1 = exp(class1.toDouble())
             val sum = exp0 + exp1
-            val prob1 = (exp1 / sum).toFloat() // Softmax probability for Class 1 (Unsafe/NSFW/Spoof)
-
-            Log.d("MODEL_SCORE_EVAL", "$modelName computed score=$prob1")
-            return prob1
+            
+            return if (modelName == "spoof_model.tflite") {
+                val prob0 = (exp0 / sum).toFloat() // Softmax probability for Class 0 (Safe/Real Human)
+                Log.d("MODEL_SCORE_EVAL", "$modelName computed passing score=$prob0")
+                prob0
+            } else {
+                val prob1 = (exp1 / sum).toFloat() // Softmax probability for Class 1 (Unsafe/NSFW/Attack)
+                Log.d("MODEL_SCORE_EVAL", "$modelName computed attack score=$prob1")
+                prob1
+            }
         }
 
         val score = outputArray[0][0]

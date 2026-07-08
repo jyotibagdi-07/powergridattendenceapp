@@ -112,11 +112,11 @@ private fun handleVerificationSuccess(
             withContext(Dispatchers.Main) {
                 RecognitionState.recognizedName.value = matchedNameResult
                 RecognitionState.matchScore.value = matchScoreResult
-                RecognitionState.faceMatched.value = matchedNameResult != "Unknown" && matchScoreResult > 0.60f
+                RecognitionState.faceMatched.value = matchedNameResult != "Unknown" && matchScoreResult > 0.48f
             }
 
-            // Anti-spoofing validation check before marking attendance
-            if (spoofScore >= 0.60f) {
+            // Anti-spoofing validation check before marking attendance (reject if real human score is below 0.45f)
+            if (spoofScore < 0.45f) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
@@ -147,7 +147,7 @@ private fun handleVerificationSuccess(
             val matchedName = matchedNameResult
             val matchScore = matchScoreResult
 
-            if (matchedName != "Unknown" && matchScore > 0.60f) {
+            if (matchedName != "Unknown" && matchScore > 0.48f) {
                 AttendanceRepository.addRecord(
                     context,
                     AttendanceRecord(
@@ -243,6 +243,7 @@ fun CameraScreen(
     }
 
     DisposableEffect(Unit) {
+        FaceState.clearHistory()
         FaceState.onVerificationSuccess = { cropped, full ->
             handleVerificationSuccess(
                 context = context,
@@ -487,8 +488,8 @@ fun CameraScreen(
                             val nsfwScore = FaceState.getAverageNsfw()
                             Log.d("CAPTURE_DEBUG", "Metrics: Blur=$blurScore, NSFW=$nsfwScore")
 
-                            // Block if NSFW average is > 0.50f
-                            if (nsfwScore > 0.50f) {
+                            // Block if NSFW average is >= 0.70f
+                            if (nsfwScore >= 0.70f) {
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(
                                         context,
@@ -511,10 +512,8 @@ fun CameraScreen(
                                                 var spoofScore = FaceState.getAverageSpoof()
                                                 Log.d("CAPTURE_DEBUG", "Spoof: $spoofScore, LiveVerified: ${FaceState.isLiveVerified.value}")
 
-
-
-                                                // Block if spoof average is >= 0.60f (meaning spoof is detected)
-                                                if (!CurrentEmployee.isRegisterMode && spoofScore >= 0.60f) {
+                                                // Block if spoof average is < 0.45f (meaning spoof is detected)
+                                                if (!CurrentEmployee.isRegisterMode && spoofScore < 0.45f) {
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                             context,
@@ -577,7 +576,7 @@ fun CameraScreen(
                                                             Locale.getDefault()
                                                         ).format(Date())
 
-                                                        if (matchedName.isNotEmpty() && matchedName != "Unknown" && matchScore > 0.60f) {
+                                                        if (matchedName.isNotEmpty() && matchedName != "Unknown" && matchScore > 0.48f) {
                                                             AttendanceRepository.addRecord(
                                                                 context,
                                                                 AttendanceRecord(

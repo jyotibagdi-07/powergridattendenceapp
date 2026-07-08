@@ -20,7 +20,7 @@ object MLKitPhotoHelper {
 
     fun detectFaceInBitmap(
         bitmap: Bitmap,
-        onSuccess: (android.graphics.Rect) -> Unit,
+        onSuccess: (Bitmap) -> Unit,
         onFailure: () -> Unit
     ) {
 
@@ -40,7 +40,7 @@ object MLKitPhotoHelper {
         bitmap: Bitmap,
         rotations: List<Int>,
         index: Int,
-        onSuccess: (android.graphics.Rect) -> Unit,
+        onSuccess: (Bitmap) -> Unit,
         onFailure: () -> Unit
     ) {
 
@@ -67,9 +67,18 @@ object MLKitPhotoHelper {
                         "Face found at rotation = $rotation"
                     )
 
-                    onSuccess(
-                        faces[0].boundingBox
-                    )
+                    val uprightBitmap = rotateBitmap(bitmap, rotation)
+                    val cropped = FaceCropHelper.cropFace(uprightBitmap, faces[0].boundingBox)
+                    
+                    if (uprightBitmap != bitmap) {
+                        uprightBitmap.recycle()
+                    }
+
+                    if (cropped != null) {
+                        onSuccess(cropped)
+                    } else {
+                        onFailure()
+                    }
 
                 } else {
 
@@ -92,5 +101,11 @@ object MLKitPhotoHelper {
                     onFailure
                 )
             }
+    }
+
+    private fun rotateBitmap(bitmap: Bitmap, degrees: Int): Bitmap {
+        if (degrees == 0) return bitmap
+        val matrix = android.graphics.Matrix().apply { postRotate(degrees.toFloat()) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 }

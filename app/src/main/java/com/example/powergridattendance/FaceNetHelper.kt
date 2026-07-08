@@ -34,7 +34,9 @@ class FaceNetHelper(
             )
 
             interpreter = Interpreter(modelBuffer)
-            Log.d("FACENET_INIT", "FaceNet framework initialized successfully")
+            val shape = interpreter!!.getInputTensor(0).shape()
+            val outShape = interpreter!!.getOutputTensor(0).shape()
+            Log.d("FACENET_INIT", "FaceNet framework initialized successfully. Input shape: ${shape.joinToString()}, Output shape: ${outShape.joinToString()}")
 
         } catch (e: Exception) {
             Log.e("FACENET_INIT", "CRITICAL error provisioning FaceNet interpreter architecture", e)
@@ -54,9 +56,9 @@ class FaceNetHelper(
 
         // Fixed single-pass iteration stream to prevent layout degradation during tensor assignment
         for (pixelValue in pixels) {
-            val r = ((pixelValue shr 16) and 0xFF) / 255f
-            val g = ((pixelValue shr 8) and 0xFF) / 255f
-            val b = (pixelValue and 0xFF) / 255f
+            val r = (((pixelValue shr 16) and 0xFF) - 127.5f) / 127.5f
+            val g = (((pixelValue shr 8) and 0xFF) - 127.5f) / 127.5f
+            val b = ((pixelValue and 0xFF) - 127.5f) / 127.5f
 
             byteBuffer.putFloat(r)
             byteBuffer.putFloat(g)
