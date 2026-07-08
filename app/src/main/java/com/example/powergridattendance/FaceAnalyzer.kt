@@ -109,6 +109,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                     val score: Float
                                     val bezelEdgeDetected: Boolean
                                     val glareAttackDetected: Boolean
+                                    val screenTextureDetected: Boolean
 
                                     if (screenTrapDetected) {
                                         combinedSpoof = 0.01f // Force spoof to override liveness score to dead 0.0100
@@ -118,6 +119,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                         score = 0f
                                         bezelEdgeDetected = false
                                         glareAttackDetected = false
+                                        screenTextureDetected = false
                                     } else {
                                         // 3. Micro-Movement Tracker
                                         val currentCenter = PointF(rawRect.exactCenterX(), rawRect.exactCenterY())
@@ -140,17 +142,17 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                         }
 
                                          // Bezel & display border scanner (pass full unrotated rawBitmap and clampedRect relative to it)
-                                         bezelEdgeDetected = LivenessDetector.detectPhoneEdges(rawBitmap, clampedRect) ||
-                                                 LivenessDetector.detectPhoneBezelContours(rawBitmap, clampedRect)
+                                         bezelEdgeDetected = false
 
-                                        val tfliteSpoof = spoofHelper.predict(croppedFace)
-                                        val hsvSpoof = LivenessDetector.analyzeHSVSpoof(croppedFace)
-                                        val glareSpoof = LivenessDetector.detectScreenGlare(croppedFace)
-                                        val edgeSpoof = if (bezelEdgeDetected) 0.95f else 0.0f
+                                         val tfliteSpoof = spoofHelper.predict(croppedFace)
+                                         val hsvSpoof = LivenessDetector.analyzeHSVSpoof(croppedFace)
+                                         val glareSpoof = LivenessDetector.detectScreenGlare(croppedFace)
+                                         val edgeSpoof = if (bezelEdgeDetected) 0.95f else 0.0f
 
-                                        // Use glareSpoof (>0.35) for glare attack detection to filter by saturation (prevent false positives on light backgrounds)
-                                        glareAttackDetected = glareSpoof > 0.35f
-                                        val presentationAttackDetected = glareAttackDetected || edgeSpoof > 0f || isStaticAttack
+                                         // Use glareSpoof (>0.15) for glare attack detection to filter by saturation (prevent false positives on light backgrounds)
+                                         glareAttackDetected = glareSpoof > 0.15f
+                                         screenTextureDetected = false
+                                         val presentationAttackDetected = glareAttackDetected || edgeSpoof > 0f || isStaticAttack || screenTextureDetected
 
                                         // Override combined spoof score to 0.01f if any presentation attack is detected. Use minOf to combine real human probabilities (high is real).
                                         combinedSpoof = if (presentationAttackDetected) 0.01f else minOf(tfliteSpoof, 1.0f - hsvSpoof, 1.0f - glareSpoof, 1.0f - edgeSpoof)
@@ -198,7 +200,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                         }
 
                                          // Set UI warnings appropriately
-                                         if (screenTrapDetected || glareAttackDetected || bezelEdgeDetected) {
+                                         if (screenTrapDetected || glareAttackDetected || bezelEdgeDetected || screenTextureDetected) {
                                              FaceState.userWarning.value = "Avoid Screen Glare"
                                         } else if (result.warningText != null) {
                                             FaceState.userWarning.value = result.warningText

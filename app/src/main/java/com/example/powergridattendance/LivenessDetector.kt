@@ -19,7 +19,7 @@ object LivenessDetector {
 
         // ML Kit returns -1 if classification is not initialized or failed
         if (leftOpen != -1.0f && rightOpen != -1.0f) {
-            if (leftOpen < 0.35f && rightOpen < 0.35f) { // Accurate blink threshold
+            if ((leftOpen < 0.35f || rightOpen < 0.35f) || (leftOpen < 0.40f && rightOpen < 0.40f)) { // Robust blink detection check
                 blinkDetected = true
                 Log.d("LIVENESS_DEBUG", "BLINK DETECTED!")
             }
@@ -80,7 +80,10 @@ object LivenessDetector {
             val minColor = minOf(r, g, b)
             val s_pixel = if (v_pixel == 0) 0f else 255f * (v_pixel - minColor) / v_pixel
 
-            if (v_pixel > (0.92f * 255) && s_pixel < (0.05f * 255)) {
+            // Differentiate cool screen light (blue/white) from warm skin highlights (red/yellow)
+            val isScreenColor = (r - b) < 15
+
+            if (v_pixel > (0.92f * 255) && s_pixel < (0.05f * 255) && isScreenColor) {
                 glarePixels++
             }
         }
@@ -102,6 +105,7 @@ object LivenessDetector {
         bitmap.getPixels(pixels, 0, targetWidth, startX, startY, targetWidth, targetHeight)
 
         var totalSaturation = 0f
+        var totalValue = 0f
         for (color in pixels) {
             val r = (color shr 16) and 0xFF
             val g = (color shr 8) and 0xFF
@@ -112,19 +116,25 @@ object LivenessDetector {
             val s_pixel = if (v_pixel == 0) 0f else 255f * (v_pixel - minColor) / v_pixel
 
             totalSaturation += s_pixel
+            totalValue += v_pixel
         }
         val avgSaturation = totalSaturation / (targetWidth * targetHeight)
-        return if (avgSaturation > (0.82f * 255)) 0.7f else 0.1f
+        val avgValue = totalValue / (targetWidth * targetHeight)
+
+        // Detect high-brightness glowing screens (abnormally bright & desaturated/washed out face crop)
+        val isHighBrightnessScreen = (avgValue > 215f && avgSaturation < 70f)
+
+        return if (avgSaturation > (0.82f * 255) || isHighBrightnessScreen) 0.95f else 0.1f
     }
 
     fun detectPhoneEdges(fullBitmap: Bitmap, faceRect: Rect): Boolean {
-        val shrinkWidth = (faceRect.width() * 0.15f).toInt()
-        val shrinkHeight = (faceRect.height() * 0.15f).toInt()
+        val expandWidth = (faceRect.width() * 0.20f).toInt()
+        val expandHeight = (faceRect.height() * 0.20f).toInt()
 
-        val left = maxOf(0, faceRect.left + shrinkWidth)
-        val top = maxOf(0, faceRect.top + shrinkHeight)
-        val right = minOf(fullBitmap.width, faceRect.right - shrinkWidth)
-        val bottom = minOf(fullBitmap.height, faceRect.bottom - shrinkHeight)
+        val left = maxOf(0, faceRect.left - expandWidth)
+        val top = maxOf(0, faceRect.top - expandHeight)
+        val right = minOf(fullBitmap.width, faceRect.right + expandWidth)
+        val bottom = minOf(fullBitmap.height, faceRect.bottom + expandHeight)
 
         val cropW = right - left
         val cropH = bottom - top
@@ -184,11 +194,22 @@ object LivenessDetector {
                 rowSumY[y] = sum
             }
 
+            var marginColsSum = 0f
+            var marginColsCount = 0
+            for (x in 1 until width - 1) {
+                if (x >= expandWidth && x <= width - expandWidth) continue
+                marginColsSum += colSumX[x]
+                marginColsCount++
+            }
+            val colThreshold = if (marginColsCount > 0) (marginColsSum / marginColsCount) * 2.2f else 30f * height
+
             var verticalLinesCount = 0
             var lastVerticalLineX = -100
-            val colThreshold = colSumX.average().toFloat() * 2.5f
             for (x in 2 until width - 2) {
-                if (colSumX[x] > maxOf(colThreshold, 30f * height) &&
+                // SKIP the face area (only check left and right margins)
+                if (x >= expandWidth && x <= width - expandWidth) continue
+
+                if (colSumX[x] > maxOf(colThreshold, 45f * height) &&
                     colSumX[x] > colSumX[x - 1] && colSumX[x] > colSumX[x + 1] &&
                     colSumX[x] > colSumX[x - 2] && colSumX[x] > colSumX[x + 2]) {
                     
@@ -199,11 +220,22 @@ object LivenessDetector {
                 }
             }
 
+            var marginRowsSum = 0f
+            var marginRowsCount = 0
+            for (y in 1 until height - 1) {
+                if (y >= expandHeight && y <= height - expandHeight) continue
+                marginRowsSum += rowSumY[y]
+                marginRowsCount++
+            }
+            val rowThreshold = if (marginRowsCount > 0) (marginRowsSum / marginRowsCount) * 2.2f else 30f * width
+
             var horizontalLinesCount = 0
             var lastHorizontalLineY = -100
-            val rowThreshold = rowSumY.average().toFloat() * 2.5f
             for (y in 2 until height - 2) {
-                if (rowSumY[y] > maxOf(rowThreshold, 30f * width) &&
+                // SKIP the face area (only check top and bottom margins)
+                if (y >= expandHeight && y <= height - expandHeight) continue
+
+                if (rowSumY[y] > maxOf(rowThreshold, 45f * width) &&
                     rowSumY[y] > rowSumY[y - 1] && rowSumY[y] > rowSumY[y + 1] &&
                     rowSumY[y] > rowSumY[y - 2] && rowSumY[y] > rowSumY[y + 2]) {
                     
@@ -227,13 +259,13 @@ object LivenessDetector {
     }
 
     fun detectPhoneBezelContours(fullBitmap: Bitmap, faceRect: Rect): Boolean {
-        val shrinkWidth = (faceRect.width() * 0.15f).toInt()
-        val shrinkHeight = (faceRect.height() * 0.15f).toInt()
+        val expandWidth = (faceRect.width() * 0.20f).toInt()
+        val expandHeight = (faceRect.height() * 0.20f).toInt()
 
-        val left = maxOf(0, faceRect.left + shrinkWidth)
-        val top = maxOf(0, faceRect.top + shrinkHeight)
-        val right = minOf(fullBitmap.width, faceRect.right - shrinkWidth)
-        val bottom = minOf(fullBitmap.height, faceRect.bottom - shrinkHeight)
+        val left = maxOf(0, faceRect.left - expandWidth)
+        val top = maxOf(0, faceRect.top - expandHeight)
+        val right = minOf(fullBitmap.width, faceRect.right + expandWidth)
+        val bottom = minOf(fullBitmap.height, faceRect.bottom + expandHeight)
 
         val cropW = right - left
         val cropH = bottom - top
@@ -257,7 +289,7 @@ object LivenessDetector {
             }
 
             val edgeMap = BooleanArray(width * height)
-            val threshold = 80f // Sobel edge threshold
+            val threshold = 50f // Sobel edge threshold
 
             for (y in 1 until height - 1) {
                 for (x in 1 until width - 1) {
@@ -281,6 +313,9 @@ object LivenessDetector {
             var verticalLines = 0
             var lastVerticalX = -100
             for (x in 2 until width - 2) {
+                // SKIP the face area (only check left and right margins)
+                if (x >= expandWidth && x <= width - expandWidth) continue
+
                 var maxLen = 0
                 var currentLen = 0
                 for (y in 2 until height - 2) {
@@ -304,6 +339,9 @@ object LivenessDetector {
             var horizontalLines = 0
             var lastHorizontalY = -100
             for (y in 2 until height - 2) {
+                // SKIP the face area (only check top and bottom margins)
+                if (y >= expandHeight && y <= height - expandHeight) continue
+
                 var maxLen = 0
                 var currentLen = 0
                 for (x in 2 until width - 2) {
@@ -334,6 +372,38 @@ object LivenessDetector {
             Log.e("LivenessDetector", "Error in bezel contours detection", e)
             return false
         }
+    }
+
+    fun detectScreenTexture(bitmap: Bitmap): Boolean {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        var laplacianSum = 0.0
+        var count = 0
+
+        for (y in 1 until height - 1) {
+            for (x in 1 until width - 1) {
+                val center = Color.red(pixels[y * width + x])
+                val left = Color.red(pixels[y * width + (x - 1)])
+                val right = Color.red(pixels[y * width + (x + 1)])
+                val top = Color.red(pixels[(y - 1) * width + x])
+                val bottom = Color.red(pixels[(y + 1) * width + x])
+
+                val laplacian = (4 * center - left - right - top - bottom).toDouble()
+                laplacianSum += laplacian * laplacian
+                count++
+            }
+        }
+
+        val variance = if (count > 0) laplacianSum / count else 0.0
+        // Abnormally high high-frequency variance indicates screen subpixels/moiré grid patterns
+        val detected = variance > 1600.0
+        if (detected) {
+            Log.d("TEXTURE_DETECTION", "Screen texture / moire detected! Variance=$variance")
+        }
+        return detected
     }
 
     fun reset() {
