@@ -88,16 +88,16 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                             lastFaceSeenTimestamp = System.currentTimeMillis()
                             val rawRect = FaceState.faceRect.value
                             if (rawRect != null) {
-                                val rawBitmap = imageProxy.toBitmap()
-                                val clampedRect = android.graphics.Rect(
-                                    maxOf(0, rawRect.left),
-                                    maxOf(0, rawRect.top),
-                                    minOf(rawBitmap.width, rawRect.right),
-                                    minOf(rawBitmap.height, rawRect.bottom)
-                                )
+                                 val rawBitmap = imageProxy.toBitmap()
+                                 val clampedRect = android.graphics.Rect(
+                                     maxOf(0, rawRect.left),
+                                     maxOf(0, rawRect.top),
+                                     minOf(rawBitmap.width, rawRect.right),
+                                     minOf(rawBitmap.height, rawRect.bottom)
+                                 )
 
-                                val croppedFace = FaceCropHelper.cropFace(rawBitmap, clampedRect)
-                                if (croppedFace != null) {
+                                 val croppedFace = FaceCropHelper.cropFace(rawBitmap, clampedRect)
+                                 if (croppedFace != null) {
 
                                     // High-Resolution Phone Screen Trap Pre-Filter Interlock (Disabled due to high false positives on sharp face features)
                                     val screenTrapDetected = false

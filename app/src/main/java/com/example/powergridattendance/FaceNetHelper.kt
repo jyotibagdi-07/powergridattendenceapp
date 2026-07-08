@@ -18,6 +18,7 @@ class FaceNetHelper(
 
     private val inputSize = 160
     private val embeddingSize = 512
+    private var isNCHW = false
 
     init {
         try {
@@ -35,8 +36,9 @@ class FaceNetHelper(
 
             interpreter = Interpreter(modelBuffer)
             val shape = interpreter!!.getInputTensor(0).shape()
+            isNCHW = (shape[1] == 3)
             val outShape = interpreter!!.getOutputTensor(0).shape()
-            Log.d("FACENET_INIT", "FaceNet framework initialized successfully. Input shape: ${shape.joinToString()}, Output shape: ${outShape.joinToString()}")
+            Log.d("FACENET_INIT", "FaceNet framework initialized successfully. Input shape: ${shape.joinToString()}, Output shape: ${outShape.joinToString()}, isNCHW: $isNCHW")
 
         } catch (e: Exception) {
             Log.e("FACENET_INIT", "CRITICAL error provisioning FaceNet interpreter architecture", e)
@@ -54,15 +56,31 @@ class FaceNetHelper(
         val pixels = IntArray(inputSize * inputSize)
         resizedBitmap.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
 
-        // Fixed single-pass iteration stream to prevent layout degradation during tensor assignment
-        for (pixelValue in pixels) {
-            val r = (((pixelValue shr 16) and 0xFF) - 127.5f) / 127.5f
-            val g = (((pixelValue shr 8) and 0xFF) - 127.5f) / 127.5f
-            val b = ((pixelValue and 0xFF) - 127.5f) / 127.5f
+        if (isNCHW) {
+            // Channel-First (R1, R2... G1, G2... B1, B2...)
+            for (pixelValue in pixels) {
+                val r = (((pixelValue shr 16) and 0xFF) - 127.5f) / 127.5f
+                byteBuffer.putFloat(r)
+            }
+            for (pixelValue in pixels) {
+                val g = (((pixelValue shr 8) and 0xFF) - 127.5f) / 127.5f
+                byteBuffer.putFloat(g)
+            }
+            for (pixelValue in pixels) {
+                val b = ((pixelValue and 0xFF) - 127.5f) / 127.5f
+                byteBuffer.putFloat(b)
+            }
+        } else {
+            // Channel-Last (R1, G1, B1, R2, G2, B2...)
+            for (pixelValue in pixels) {
+                val r = (((pixelValue shr 16) and 0xFF) - 127.5f) / 127.5f
+                val g = (((pixelValue shr 8) and 0xFF) - 127.5f) / 127.5f
+                val b = ((pixelValue and 0xFF) - 127.5f) / 127.5f
 
-            byteBuffer.putFloat(r)
-            byteBuffer.putFloat(g)
-            byteBuffer.putFloat(b)
+                byteBuffer.putFloat(r)
+                byteBuffer.putFloat(g)
+                byteBuffer.putFloat(b)
+            }
         }
 
         val embedding = Array(1) { FloatArray(embeddingSize) }

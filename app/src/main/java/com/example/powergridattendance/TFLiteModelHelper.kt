@@ -104,32 +104,17 @@ class TFLiteModelHelper(
             for (i in 0 until totalPixels) {
                 val pixel = pixelsBuffer[i]
                 val r = (((pixel shr 16) and 0xFF) / 255f) * scale
-                val nr = if (modelName == "spoof_model.tflite") {
-                    (r - 0.485f) / 0.229f
-                } else {
-                    r
-                }
-                inputBuffer.putFloat(nr)
+                inputBuffer.putFloat(r)
             }
             for (i in 0 until totalPixels) {
                 val pixel = pixelsBuffer[i]
                 val g = (((pixel shr 8) and 0xFF) / 255f) * scale
-                val ng = if (modelName == "spoof_model.tflite") {
-                    (g - 0.456f) / 0.224f
-                } else {
-                    g
-                }
-                inputBuffer.putFloat(ng)
+                inputBuffer.putFloat(g)
             }
             for (i in 0 until totalPixels) {
                 val pixel = pixelsBuffer[i]
                 val b = ((pixel and 0xFF) / 255f) * scale
-                val nb = if (modelName == "spoof_model.tflite") {
-                    (b - 0.406f) / 0.225f
-                } else {
-                    b
-                }
-                inputBuffer.putFloat(nb)
+                inputBuffer.putFloat(b)
             }
         } else {
             // Channel-Last Structure: Stream color tokens sequentially [R1, G1, B1...]
@@ -139,18 +124,9 @@ class TFLiteModelHelper(
                 val g = (((pixel shr 8) and 0xFF) / 255f) * scale
                 val b = ((pixel and 0xFF) / 255f) * scale
 
-                if (modelName == "spoof_model.tflite") {
-                    val nr = (r - 0.485f) / 0.229f
-                    val ng = (g - 0.456f) / 0.224f
-                    val nb = (b - 0.406f) / 0.225f
-                    inputBuffer.putFloat(nr)
-                    inputBuffer.putFloat(ng)
-                    inputBuffer.putFloat(nb)
-                } else {
-                    inputBuffer.putFloat(r)
-                    inputBuffer.putFloat(g)
-                    inputBuffer.putFloat(b)
-                }
+                inputBuffer.putFloat(r)
+                inputBuffer.putFloat(g)
+                inputBuffer.putFloat(b)
             }
         }
 
