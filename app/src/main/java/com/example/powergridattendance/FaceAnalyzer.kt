@@ -88,7 +88,15 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                             lastFaceSeenTimestamp = System.currentTimeMillis()
                             val rawRect = FaceState.faceRect.value
                             if (rawRect != null) {
-                                 val rawBitmap = imageProxy.toBitmap()
+                                 val sensorBitmap = imageProxy.toBitmap()
+                                 val rawBitmap = if (rotation == 0) {
+                                     sensorBitmap
+                                 } else {
+                                     val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
+                                     val rotated = Bitmap.createBitmap(sensorBitmap, 0, 0, sensorBitmap.width, sensorBitmap.height, matrix, true)
+                                     sensorBitmap.recycle()
+                                     rotated
+                                 }
                                  val clampedRect = android.graphics.Rect(
                                      maxOf(0, rawRect.left),
                                      maxOf(0, rawRect.top),
