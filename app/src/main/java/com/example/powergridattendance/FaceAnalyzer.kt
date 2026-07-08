@@ -96,8 +96,12 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                                      minOf(rawBitmap.height, rawRect.bottom)
                                  )
 
-                                 val croppedFace = FaceCropHelper.cropFace(rawBitmap, clampedRect)
-                                 if (croppedFace != null) {
+                                 val tempCropped = FaceCropHelper.cropFace(rawBitmap, clampedRect)
+                                 if (tempCropped != null) {
+                                     // Mirror the face horizontally to match the mirrored ImageCapture output used during registration
+                                     val mirrorMatrix = android.graphics.Matrix().apply { postScale(-1f, 1f) }
+                                     val croppedFace = Bitmap.createBitmap(tempCropped, 0, 0, tempCropped.width, tempCropped.height, mirrorMatrix, true)
+                                     tempCropped.recycle()
 
                                     // High-Resolution Phone Screen Trap Pre-Filter Interlock (Disabled due to high false positives on sharp face features)
                                     val screenTrapDetected = false
