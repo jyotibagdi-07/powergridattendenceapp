@@ -42,15 +42,19 @@ class TFLiteModelHelper(
             val inputShape = interpreter!!.getInputTensor(0).shape()
             Log.d("MODEL_SHAPE", "$modelName -> ${inputShape.joinToString()}")
 
-            // Evaluate if channel depth token (3) sits at index 1 (NCHW) or index 3 (NHWC)
-            if (inputShape[1] == 3) {
+            val channelIndex = inputShape.indexOf(3)
+            if (channelIndex == 0 || channelIndex == 1) {
                 isNCHW = true
-                inputHeight = inputShape[2]
-                inputWidth = inputShape[3]
+                val heightIndex = if (channelIndex == 0) 1 else 2
+                val widthIndex = if (channelIndex == 0) 2 else 3
+                inputHeight = inputShape[heightIndex]
+                inputWidth = inputShape[widthIndex]
             } else {
                 isNCHW = false
-                inputHeight = inputShape[1]
-                inputWidth = inputShape[2]
+                val heightIndex = if (channelIndex == 2) 0 else 1
+                val widthIndex = if (channelIndex == 2) 1 else 2
+                inputHeight = inputShape[heightIndex]
+                inputWidth = inputShape[widthIndex]
             }
 
             Log.d("MODEL_INIT_SUCCESS", "$modelName configuration: isNCHW=$isNCHW, Dimensions=[$inputHeight x $inputWidth]")

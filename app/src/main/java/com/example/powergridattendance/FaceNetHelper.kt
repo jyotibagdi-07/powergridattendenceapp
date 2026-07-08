@@ -36,7 +36,8 @@ class FaceNetHelper(
 
             interpreter = Interpreter(modelBuffer)
             val shape = interpreter!!.getInputTensor(0).shape()
-            isNCHW = (shape[1] == 3)
+            val channelIndex = shape.indexOf(3)
+            isNCHW = (channelIndex == 0 || channelIndex == 1)
             val outShape = interpreter!!.getOutputTensor(0).shape()
             Log.d("FACENET_INIT", "FaceNet framework initialized successfully. Input shape: ${shape.joinToString()}, Output shape: ${outShape.joinToString()}, isNCHW: $isNCHW")
 
