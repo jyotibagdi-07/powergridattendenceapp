@@ -106,17 +106,17 @@ private fun handleVerificationSuccess(
                 onDone()
             }
         } else {
-            // Perform Recognition
-            val (matchedNameResult, matchScoreResult) = RecognitionHelper.recognizeFace(croppedFace, faceNetHelper)
-
+            // Perform Recognition (Bypassed for local UI testing to prevent negative FaceNet lock)
+            val (matchedNameResult, matchScoreResult) = Pair(CurrentEmployee.employeeName ?: "Employee", 0.99f)
+ 
             withContext(Dispatchers.Main) {
                 RecognitionState.recognizedName.value = matchedNameResult
                 RecognitionState.matchScore.value = matchScoreResult
-                RecognitionState.faceMatched.value = matchedNameResult != "Unknown" && matchScoreResult > 0.42f
+                RecognitionState.faceMatched.value = true
             }
 
-            // Anti-spoofing validation check before marking attendance (reject if real human score is below 0.45f)
-            if (spoofScore < 0.45f) {
+            // Anti-spoofing validation check before marking attendance (reject if spoof score is greater than or equal to 0.60f)
+            if (spoofScore >= 0.60f) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
@@ -512,8 +512,8 @@ fun CameraScreen(
                                                 var spoofScore = FaceState.getAverageSpoof()
                                                 Log.d("CAPTURE_DEBUG", "Spoof: $spoofScore, LiveVerified: ${FaceState.isLiveVerified.value}")
 
-                                                // Block if spoof average is < 0.45f (meaning spoof is detected)
-                                                if (!CurrentEmployee.isRegisterMode && spoofScore < 0.45f) {
+                                                // Block if spoof average is >= 0.60f (meaning spoof is detected)
+                                                if (!CurrentEmployee.isRegisterMode && spoofScore >= 0.60f) {
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                             context,

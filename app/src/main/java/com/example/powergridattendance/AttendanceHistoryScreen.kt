@@ -37,7 +37,7 @@ fun AttendanceHistoryScreen(
  
         Spacer(modifier = Modifier.height(16.dp))
  
-        androidx.compose.foundation.layout.Row(
+        Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
