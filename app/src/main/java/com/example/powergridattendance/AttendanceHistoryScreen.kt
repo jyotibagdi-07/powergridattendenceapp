@@ -16,17 +16,15 @@ fun AttendanceHistoryScreen(
     onBack: () -> Unit
 ) {
 
-    val records =
-        AttendanceRepository.getAllRecords()
-
     val context = LocalContext.current
-
+    val records = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateListOf<AttendanceRecord>().apply { addAll(AttendanceRepository.getAllRecords()) } }
+ 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-
+ 
         Button(
             onClick = onBack,
             colors = ButtonDefaults.buttonColors(
@@ -36,13 +34,31 @@ fun AttendanceHistoryScreen(
         ) {
             Text("< Back")
         }
-
+ 
         Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Attendance History",
-            style = MaterialTheme.typography.headlineSmall
-        )
+ 
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Attendance History",
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Button(
+                onClick = {
+                    AttendanceRepository.clearAllRecords(context)
+                    records.clear()
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text("Clear All")
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 

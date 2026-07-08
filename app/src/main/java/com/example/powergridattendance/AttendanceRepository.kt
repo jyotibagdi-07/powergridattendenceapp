@@ -88,4 +88,21 @@ object AttendanceRepository {
     fun getAllRecords(): List<AttendanceRecord> {
         return records
     }
+
+    fun clearAllRecords(context: Context) {
+        try {
+            val file = File(context.filesDir, "attendance_records.json")
+            if (file.exists()) {
+                file.delete()
+            }
+            context.filesDir.listFiles()?.forEach { f ->
+                if (f.name.startsWith("attendance_") || f.name == "attendance.jpg") {
+                    f.delete()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("AttendanceRepository", "Error clearing attendance records", e)
+        }
+        records.clear()
+    }
 }

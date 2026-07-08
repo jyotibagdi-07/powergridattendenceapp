@@ -72,4 +72,22 @@ object EmployeeRepository {
     fun getAllEmployees(): List<Employee> {
         return employees
     }
+
+    fun clearAllEmployees(context: Context) {
+        try {
+            val file = File(context.filesDir, "employees.json")
+            if (file.exists()) {
+                file.delete()
+            }
+            context.filesDir.listFiles()?.forEach { f ->
+                if (f.name.endsWith("_face.jpg")) {
+                    f.delete()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("EmployeeRepository", "Error clearing employees", e)
+        }
+        employees.clear()
+        RecognitionHelper.clearCache()
+    }
 }

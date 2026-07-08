@@ -19,10 +19,8 @@ fun EmployeeDetailsScreen(
     onBack: () -> Unit
 ) {
 
-    val employees =
-        EmployeeRepository.getAllEmployees()
-
     val context = LocalContext.current
+    val employees = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateListOf<Employee>().apply { addAll(EmployeeRepository.getAllEmployees()) } }
 
     Column(
         modifier = Modifier
@@ -44,11 +42,29 @@ fun EmployeeDetailsScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Text(
-            text = "Employee Details",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Employee Details",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Button(
+                onClick = {
+                    EmployeeRepository.clearAllEmployees(context)
+                    employees.clear()
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text("Clear All")
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 

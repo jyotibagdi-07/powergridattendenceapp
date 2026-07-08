@@ -7,6 +7,10 @@ import android.util.Log
 object RecognitionHelper {
     private val employeeEmbeddings = mutableMapOf<String, FloatArray>()
 
+    fun clearCache() {
+        employeeEmbeddings.clear()
+    }
+
     fun loadEmbeddings(context: Context, faceNetHelper: FaceNetHelper) {
         val employees = EmployeeRepository.getAllEmployees()
         Log.d("FACENET_RECOGNITION", "loadEmbeddings: employees count=${employees.size}")
