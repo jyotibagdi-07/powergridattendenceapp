@@ -223,7 +223,7 @@ class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
                             }
                         } else {
                             val now = System.currentTimeMillis()
-                            if (now - lastFaceSeenTimestamp > 2000) {
+                            if (now - lastFaceSeenTimestamp > 300) {
                                 withContext(Dispatchers.Main) {
                                     FaceState.clearHistory()
                                     LivenessDetector.reset()

@@ -11,6 +11,9 @@ object LivenessDetector {
     var blinkDetected = false
         private set
 
+    private var eyesOpenBefore = false
+    private var eyesClosed = false
+
     fun addFrame(face: Face) {
         val leftOpen = face.leftEyeOpenProbability ?: -1.0f
         val rightOpen = face.rightEyeOpenProbability ?: -1.0f
@@ -19,9 +22,23 @@ object LivenessDetector {
 
         // ML Kit returns -1 if classification is not initialized or failed
         if (leftOpen != -1.0f && rightOpen != -1.0f) {
-            if ((leftOpen < 0.35f || rightOpen < 0.35f) || (leftOpen < 0.40f && rightOpen < 0.40f)) { // Robust blink detection check
-                blinkDetected = true
-                Log.d("LIVENESS_DEBUG", "BLINK DETECTED!")
+            val avgOpen = (leftOpen + rightOpen) / 2.0f
+            if (!eyesOpenBefore) {
+                if (avgOpen > 0.60f) {
+                    eyesOpenBefore = true
+                    Log.d("LIVENESS_DEBUG", "BLINK SEQUENCE: Eyes Open Detected")
+                }
+            } else if (!eyesClosed) {
+                // Register eyes closed if either eye drops below 0.35f
+                if (leftOpen < 0.35f || rightOpen < 0.35f) {
+                    eyesClosed = true
+                    Log.d("LIVENESS_DEBUG", "BLINK SEQUENCE: Eyes Closed Detected")
+                }
+            } else {
+                if (avgOpen > 0.60f) {
+                    blinkDetected = true
+                    Log.d("LIVENESS_DEBUG", "BLINK SEQUENCE COMPLETE: Eyes Opened Again!")
+                }
             }
         }
     }
@@ -408,5 +425,7 @@ object LivenessDetector {
 
     fun reset() {
         blinkDetected = false
+        eyesOpenBefore = false
+        eyesClosed = false
     }
 }
