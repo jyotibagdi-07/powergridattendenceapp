@@ -106,17 +106,17 @@ private fun handleVerificationSuccess(
                 onDone()
             }
         } else {
-            // Perform Recognition (Bypassed for local UI testing to prevent negative FaceNet lock)
-            val (matchedNameResult, matchScoreResult) = Pair(CurrentEmployee.employeeName ?: "Employee", 0.99f)
+            // Perform Recognition
+            val (matchedNameResult, matchScoreResult) = RecognitionHelper.recognizeFace(croppedFace, faceNetHelper)
  
             withContext(Dispatchers.Main) {
                 RecognitionState.recognizedName.value = matchedNameResult
                 RecognitionState.matchScore.value = matchScoreResult
-                RecognitionState.faceMatched.value = true
+                RecognitionState.faceMatched.value = matchedNameResult != "Unknown" && matchScoreResult > 0.38f
             }
 
-            // Anti-spoofing validation check before marking attendance (reject if spoof score is greater than or equal to 0.60f)
-            if (spoofScore >= 0.60f) {
+            // Anti-spoofing validation check before marking attendance (reject if real human score is below 0.45f)
+            if (spoofScore < 0.45f) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
@@ -147,7 +147,7 @@ private fun handleVerificationSuccess(
             val matchedName = matchedNameResult
             val matchScore = matchScoreResult
 
-            if (matchedName != "Unknown" && matchScore > 0.42f) {
+            if (matchedName != "Unknown" && matchScore > 0.38f) {
                 AttendanceRepository.addRecord(
                     context,
                     AttendanceRecord(
@@ -368,7 +368,8 @@ fun CameraScreen(
                             Text(
                                 text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
                                         "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
-                                        "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."}",
+                                        "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."} | " +
+                                        "Match: ${(RecognitionState.matchScore.value * 100).toInt()}%",
                                 color = Color.DarkGray,
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp
@@ -413,7 +414,8 @@ fun CameraScreen(
                             Text(
                                 text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
                                         "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
-                                        "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."}",
+                                        "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."} | " +
+                                        "Match: ${(RecognitionState.matchScore.value * 100).toInt()}%",
                                 color = Color.DarkGray,
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp
@@ -512,8 +514,8 @@ fun CameraScreen(
                                                 var spoofScore = FaceState.getAverageSpoof()
                                                 Log.d("CAPTURE_DEBUG", "Spoof: $spoofScore, LiveVerified: ${FaceState.isLiveVerified.value}")
 
-                                                // Block if spoof average is >= 0.60f (meaning spoof is detected)
-                                                if (!CurrentEmployee.isRegisterMode && spoofScore >= 0.60f) {
+                                                // Block if spoof average is < 0.45f (meaning spoof is detected)
+                                                if (!CurrentEmployee.isRegisterMode && spoofScore < 0.45f) {
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                             context,
@@ -568,15 +570,16 @@ fun CameraScreen(
                                                             onDone()
                                                         }
                                                     } else {
-                                                        val matchedName = RecognitionState.recognizedName.value
-                                                        val matchScore = RecognitionState.matchScore.value
-                                                        
+                                                        val (matchedName, matchScore) = withContext(Dispatchers.Default) {
+                                                            RecognitionHelper.recognizeFace(croppedFace, faceNetHelper)
+                                                        }
+
                                                         val timestamp = SimpleDateFormat(
                                                             "dd-MM-yyyy HH:mm:ss",
                                                             Locale.getDefault()
                                                         ).format(Date())
 
-                                                        if (matchedName.isNotEmpty() && matchedName != "Unknown" && matchScore > 0.42f) {
+                                                        if (matchedName.isNotEmpty() && matchedName != "Unknown" && matchScore > 0.38f) {
                                                             AttendanceRepository.addRecord(
                                                                 context,
                                                                 AttendanceRecord(

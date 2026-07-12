@@ -111,22 +111,39 @@ class TFLiteModelHelper(
             // 3. Replace the internal execution segment with the normalized path
             if (useNCHW) {
                 // Planar format [1, 3, 224, 224]
-                // If it is the spoof model, let's test [0.0, 255.0] scaling
-                val divisor = if (isSpoofModel) 1.0f else 255.0f
-                for (i in 0 until intValues.size) {
-                    val pixel = intValues[i]
-                    val r = ((pixel shr 16) and 0xFF) / divisor
-                    inputBuffer.putFloat(r)
-                }
-                for (i in 0 until intValues.size) {
-                    val pixel = intValues[i]
-                    val g = ((pixel shr 8) and 0xFF) / divisor
-                    inputBuffer.putFloat(g)
-                }
-                for (i in 0 until intValues.size) {
-                    val pixel = intValues[i]
-                    val b = (pixel and 0xFF) / divisor
-                    inputBuffer.putFloat(b)
+                if (isSpoofModel) {
+                    // ImageNet normalization: (x / 255.0 - mean) / std
+                    for (i in 0 until intValues.size) {
+                        val pixel = intValues[i]
+                        val r = (((pixel shr 16) and 0xFF) / 255.0f - 0.485f) / 0.229f
+                        inputBuffer.putFloat(r)
+                    }
+                    for (i in 0 until intValues.size) {
+                        val pixel = intValues[i]
+                        val g = (((pixel shr 8) and 0xFF) / 255.0f - 0.456f) / 0.224f
+                        inputBuffer.putFloat(g)
+                    }
+                    for (i in 0 until intValues.size) {
+                        val pixel = intValues[i]
+                        val b = (((pixel and 0xFF)) / 255.0f - 0.406f) / 0.225f
+                        inputBuffer.putFloat(b)
+                    }
+                } else {
+                    for (i in 0 until intValues.size) {
+                        val pixel = intValues[i]
+                        val r = ((pixel shr 16) and 0xFF) / 255.0f
+                        inputBuffer.putFloat(r)
+                    }
+                    for (i in 0 until intValues.size) {
+                        val pixel = intValues[i]
+                        val g = ((pixel shr 8) and 0xFF) / 255.0f
+                        inputBuffer.putFloat(g)
+                    }
+                    for (i in 0 until intValues.size) {
+                        val pixel = intValues[i]
+                        val b = (pixel and 0xFF) / 255.0f
+                        inputBuffer.putFloat(b)
+                    }
                 }
             } else {
                 // Interleaved standard format [1, 224, 224, 3]

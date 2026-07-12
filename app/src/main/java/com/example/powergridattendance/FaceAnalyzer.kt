@@ -16,7 +16,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import java.util.concurrent.atomic.AtomicBoolean
 
-class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
+class FaceAnalyzer(private val context: Context) : ImageAnalysis.Analyzer {
 
     private val detector = FaceDetectorHelper()
     private val spoofHelper = TFLiteModelHelper(context, "spoof_model.tflite")
@@ -29,7 +29,8 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
     private val analysisScope = CoroutineScope(Dispatchers.Default)
     private val isProcessing = AtomicBoolean(false)
 
-
+    // 3. HARDWARE-BASED COMPUTER VISION COUNTERMEASURES: Bounding Box Centers Memory
+    private val boxCenters = mutableListOf<PointF>()
 
     @SuppressLint("UnsafeOptInUsageError")
     override fun analyze(imageProxy: ImageProxy) {
@@ -87,28 +88,29 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                             lastFaceSeenTimestamp = System.currentTimeMillis()
                             val rawRect = FaceState.faceRect.value
                             if (rawRect != null) {
-                                 val sensorBitmap = imageProxy.toBitmap()
-                                 val rawBitmap = if (rotation == 0) {
-                                     sensorBitmap
-                                 } else {
+                                 val rawBitmap = imageProxy.toBitmap()
+                                 val needsRotation = (rotation == 90 || rotation == 270) && (rawBitmap.width > rawBitmap.height)
+                                 val uprightBitmap = if (needsRotation) {
                                      val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
-                                     val rotated = Bitmap.createBitmap(sensorBitmap, 0, 0, sensorBitmap.width, sensorBitmap.height, matrix, true)
-                                     sensorBitmap.recycle()
-                                     rotated
+                                     Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
+                                 } else {
+                                     rawBitmap
                                  }
+
                                  val clampedRect = android.graphics.Rect(
                                      maxOf(0, rawRect.left),
                                      maxOf(0, rawRect.top),
-                                     minOf(rawBitmap.width, rawRect.right),
-                                     minOf(rawBitmap.height, rawRect.bottom)
+                                     minOf(uprightBitmap.width, rawRect.right),
+                                     minOf(uprightBitmap.height, rawRect.bottom)
                                  )
 
-                                 val tempCropped = FaceCropHelper.cropFace(rawBitmap, clampedRect)
+                                 val tempCropped = FaceCropHelper.cropFace(uprightBitmap, clampedRect)
                                  if (tempCropped != null) {
-                                     // Mirror the face horizontally to match the mirrored ImageCapture output used during registration
-                                     val mirrorMatrix = android.graphics.Matrix().apply { postScale(-1f, 1f) }
-                                     val croppedFace = Bitmap.createBitmap(tempCropped, 0, 0, tempCropped.width, tempCropped.height, mirrorMatrix, true)
-                                     tempCropped.recycle()
+                                     // Log crop details for debugging
+                                     Log.d("FACENET_RECOGNITION", "Crop debug: rawRect=$rawRect, rotation=$rotation, bitmapSize=${rawBitmap.width}x${rawBitmap.height}, uprightSize=${uprightBitmap.width}x${uprightBitmap.height}, clampedRect=$clampedRect, cropSize=${tempCropped.width}x${tempCropped.height}")
+                                     
+                                     // Use the cropped face directly without mirroring, matching the true-view captured image
+                                     val croppedFace = tempCropped
 
                                     // High-Resolution Phone Screen Trap Pre-Filter Interlock (Disabled due to high false positives on sharp face features)
                                     val screenTrapDetected = false
@@ -123,7 +125,7 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                                     val screenTextureDetected: Boolean
 
                                     if (screenTrapDetected) {
-                                        combinedSpoof = 0.99f // Force spoof to override liveness score to high attack probability
+                                        combinedSpoof = 0.01f // Force spoof to override liveness score to dead 0.0100
                                         blurScore = 1.0f // Set to maximum blurriness
                                         nsfwScore = 0.0f
                                         name = ""
@@ -132,22 +134,43 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                                         glareAttackDetected = false
                                         screenTextureDetected = false
                                     } else {
-                                         // Bezel & display border scanner (pass unrotated rawBitmap and clampedRect relative to it)
-                                         bezelEdgeDetected = LivenessDetector.detectPhoneEdges(rawBitmap, clampedRect)
+                                        // 3. Micro-Movement Tracker
+                                        val currentCenter = PointF(rawRect.exactCenterX(), rawRect.exactCenterY())
+                                        var isStaticAttack = false
+                                        synchronized(boxCenters) {
+                                            boxCenters.add(currentCenter)
+                                            if (boxCenters.size > 10) {
+                                                boxCenters.removeAt(0)
+                                            }
+                                            if (boxCenters.size >= 10) {
+                                                val meanX = boxCenters.map { it.x }.average().toFloat()
+                                                val meanY = boxCenters.map { it.y }.average().toFloat()
+                                                val varX = boxCenters.map { (it.x - meanX) * (it.x - meanX) }.average().toFloat()
+                                                val varY = boxCenters.map { (it.y - meanY) * (it.y - meanY) }.average().toFloat()
+                                                // Variance = 0.0f indicates frozen/printed photo attack (Disabled: causes false positives when holding phone still)
+                                                if (varX == 0.0f && varY == 0.0f) {
+                                                    isStaticAttack = false
+                                                }
+                                            }
+                                        }
+
+                                         // Bezel & display border scanner (pass uprightBitmap and clampedRect relative to it)
+                                         bezelEdgeDetected = LivenessDetector.detectPhoneEdges(uprightBitmap, clampedRect) ||
+                                                 LivenessDetector.detectPhoneBezelContours(uprightBitmap, clampedRect)
  
                                          val tfliteSpoof = spoofHelper.predict(croppedFace)[0]
                                          val hsvSpoof = LivenessDetector.analyzeHSVSpoof(croppedFace)
                                          val glareSpoof = LivenessDetector.detectScreenGlare(croppedFace)
                                          val edgeSpoof = if (bezelEdgeDetected) 0.95f else 0.0f
  
-                                         // Use glareSpoof (>0.15) for glare attack detection to filter by saturation (prevent false positives on light backgrounds)
-                                         glareAttackDetected = glareSpoof > 0.15f
+                                         // Use glareSpoof (>0.02) for glare attack detection to filter by saturation (sensitive reflection scan)
+                                         glareAttackDetected = glareSpoof > 0.02f
                                          screenTextureDetected = LivenessDetector.detectScreenTexture(croppedFace)
-                                         val presentationAttackDetected = glareAttackDetected || edgeSpoof > 0f || screenTextureDetected
- 
-                                        // Override combined spoof score to 0.99f if any presentation attack is detected. Use maxOf to combine attack probabilities (high is attack).
-                                        combinedSpoof = if (presentationAttackDetected) 0.99f else maxOf(tfliteSpoof, hsvSpoof, glareSpoof, edgeSpoof)
-                                        Log.d("LIVENESS_DEBUG", "Scores -> tfliteSpoof: $tfliteSpoof, hsvSpoof: $hsvSpoof, glareSpoof: $glareSpoof, edgeSpoof: $edgeSpoof, combined: $combinedSpoof")
+                                         val presentationAttackDetected = glareAttackDetected || edgeSpoof > 0f || isStaticAttack || screenTextureDetected
+
+                                        // Use nested minOf calls to avoid vararg overload resolution issues
+                                        val livenessScore = minOf(tfliteSpoof, minOf(1.0f - hsvSpoof, minOf(1.0f - glareSpoof, 1.0f - edgeSpoof)))
+                                        combinedSpoof = if (presentationAttackDetected) 0.01f else livenessScore
 
                                         // Laplacian Variance Blur Calculation (higher = blurrier)
                                         blurScore = LivenessDetector.calculateBlurScore(croppedFace)
@@ -155,14 +178,17 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                                         // NSFW/safety metric (higher = more NSFW probability)
                                         nsfwScore = nsfwHelper.predict(croppedFace)[1]
 
-                                         // Perform Recognition in real-time (Bypassed for local UI testing to prevent negative FaceNet lock)
-                                         val (n, s) = if (!CurrentEmployee.isRegisterMode) {
-                                             Pair(CurrentEmployee.employeeName ?: "Employee", 0.99f)
-                                         } else {
-                                             Pair("", 0f)
-                                         }
-                                         name = n
-                                         score = s
+                                        // Perform Recognition in real-time
+                                        val (n, s) = if (!CurrentEmployee.isRegisterMode) {
+                                            RecognitionHelper.recognizeFace(croppedFace, faceNetHelper)
+                                        } else {
+                                            Pair("", 0f)
+                                        }
+                                        name = n
+                                        score = s
+                                        
+                                        // Log face recognition match details for debugging
+                                        Log.d("FACENET_RECOGNITION", "Real-time match: name=$name, score=$score")
                                     }
 
                                     val rawSpoofScore = combinedSpoof
@@ -171,7 +197,7 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                                     val result = FaceState.updateMetrics(rawSpoofScore, blurScore, nsfwScore)
 
                                     val fullBitmap = if (result.triggerSuccess) {
-                                        Bitmap.createBitmap(rawBitmap)
+                                        Bitmap.createBitmap(uprightBitmap)
                                     } else {
                                         null
                                     }
@@ -181,15 +207,23 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                                         FaceState.liveBlurScore.value = result.avgBlur
                                         FaceState.liveNsfwScore.value = result.avgNsfw
 
-                                        if (!CurrentEmployee.isRegisterMode && name != "Unknown" && score > 0.42f) {
-                                            RecognitionState.recognizedName.value = name
-                                            RecognitionState.matchScore.value = score
-                                            RecognitionState.faceMatched.value = true
-                                        } else if (!CurrentEmployee.isRegisterMode) {
-                                            RecognitionState.recognizedName.value = "Unknown"
-                                            RecognitionState.matchScore.value = score
-                                            RecognitionState.faceMatched.value = false
-                                        }
+                                         if (!CurrentEmployee.isRegisterMode && name != "Unknown" && score > 0.35f) {
+                                             if (RecognitionState.recognizedName.value != name) {
+                                                 Log.d("FACENET_RECOGNITION", "Recognized name changed from '${RecognitionState.recognizedName.value}' to '$name'. Resetting liveness.")
+                                                 FaceState.clearHistory()
+                                             }
+                                             RecognitionState.recognizedName.value = name
+                                             RecognitionState.matchScore.value = score
+                                             RecognitionState.faceMatched.value = true
+                                         } else if (!CurrentEmployee.isRegisterMode) {
+                                             if (RecognitionState.recognizedName.value != "Unknown") {
+                                                 Log.d("FACENET_RECOGNITION", "Recognized name changed to Unknown. Resetting liveness.")
+                                                 FaceState.clearHistory()
+                                             }
+                                             RecognitionState.recognizedName.value = "Unknown"
+                                             RecognitionState.matchScore.value = score
+                                             RecognitionState.faceMatched.value = false
+                                         }
 
                                          // Set UI warnings appropriately
                                          if (screenTrapDetected || glareAttackDetected || bezelEdgeDetected || screenTextureDetected) {
@@ -203,8 +237,8 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                                         FaceState.consecutivePassesStreak.value = result.streak
                                         FaceState.attendanceVerified.value = result.verified
 
-                                        // Update UI color indicator immediately: spoof < 0.60f, blurriness < 0.92f, NSFW < 0.70f, and blink detected
-                                        FaceState.isLiveVerified.value = (result.avgSpoof < 0.60f && result.avgBlur < 0.92f && result.avgNsfw < 0.70f && LivenessDetector.blinkDetected)
+                                        // Update UI color indicator immediately
+                                        FaceState.isLiveVerified.value = result.verified
 
                                         if (result.triggerSuccess && fullBitmap != null) {
                                             FaceState.onVerificationSuccess?.invoke(croppedFace, fullBitmap)
@@ -215,7 +249,7 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                             }
                         } else {
                             val now = System.currentTimeMillis()
-                            if (now - lastFaceSeenTimestamp > 1200) {
+                            if (now - lastFaceSeenTimestamp > 300) {
                                 withContext(Dispatchers.Main) {
                                     FaceState.clearHistory()
                                     LivenessDetector.reset()
@@ -238,5 +272,72 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
             imageProxy.close()
             isProcessing.set(false)
         }
+    }
+
+    private fun detectPhoneScreenTrap(bitmap: Bitmap): Boolean {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        var totalLuminance = 0.0
+        var laplacianSum = 0.0
+        var count = 0
+
+        for (y in 1 until height - 1) {
+            for (x in 1 until width - 1) {
+                val idx = y * width + x
+                val color = pixels[idx]
+                val r = (color shr 16) and 0xFF
+                val g = (color shr 8) and 0xFF
+                val b = color and 0xFF
+                val luminance = 0.299f * r + 0.587f * g + 0.114f * b
+                totalLuminance += luminance
+
+                val left = (pixels[idx - 1] shr 16) and 0xFF
+                val right = (pixels[idx + 1] shr 16) and 0xFF
+                val top = (pixels[(y - 1) * width + x] shr 16) and 0xFF
+                val bottom = (pixels[(y + 1) * width + x] shr 16) and 0xFF
+                
+                val laplacian = 4 * r - left - right - top - bottom
+                laplacianSum += laplacian * laplacian
+                count++
+            }
+        }
+
+        val avgLuminance = if (width * height > 0) totalLuminance / (width * height) else 0.0
+
+        var luminancePeaks = 0
+        val hsv = FloatArray(3)
+        for (color in pixels) {
+            val r = (color shr 16) and 0xFF
+            val g = (color shr 8) and 0xFF
+            val b = color and 0xFF
+            val luminance = 0.299f * r + 0.587f * g + 0.114f * b
+            android.graphics.Color.colorToHSV(color, hsv)
+            if (luminance > 250f && hsv[1] < 0.04f && hsv[2] > 0.98f) {
+                luminancePeaks++
+            }
+        }
+
+        val variance = if (count > 0) laplacianSum / count else 0.0
+        val peakRatio = luminancePeaks.toFloat() / (width * height)
+
+        // Constraints:
+        // - peakRatio > 0.08f indicates intense screen backlight lighting anomalies
+        // - variance > 18000.0 indicates screen matrix grid groupings (moiré patterns)
+        val screenTrap = peakRatio > 0.08f || variance > 18000.0
+        if (screenTrap) {
+            Log.d("SCREEN_TRAP", "Screen trap caught: Peaks=$peakRatio, Var=$variance, AvgL=$avgLuminance")
+        }
+        return screenTrap
+    }
+
+
+
+    private fun rotateBitmap(bitmap: Bitmap, degrees: Int): Bitmap {
+        if (degrees == 0) return bitmap
+        val matrix = android.graphics.Matrix().apply { postRotate(degrees.toFloat()) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 }

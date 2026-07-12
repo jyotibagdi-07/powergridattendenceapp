@@ -85,13 +85,10 @@ object FaceState {
             val avgBlur = if (blurHistory.isNotEmpty()) blurHistory.average().toFloat() else 0.0f
             val avgNsfw = if (nsfwSafetyHistory.isNotEmpty()) nsfwSafetyHistory.average().toFloat() else 0.0f
 
-            // Corrected Thresholds:
-            // - avgBlur must be strictly LESS than 0.92f (clarityPass)
-            // - avgNsfw must be strictly LESS than 0.70f (attack/NSFW probability)
-            // - avgSpoof must be strictly LESS than 0.60f (since spoofScore represents Spoof/Attack probability, relaxed to 0.60f for emulators/webcams)
+            // - avgSpoof must be strictly GREATER than 0.45f (since spoofScore represents real human probability, relaxed to 0.45f for emulators/webcams)
             val blurPass = avgBlur < 0.92f 
             val nsfwPass = avgNsfw < 0.70f 
-            val spoofPass = avgSpoof < 0.60f 
+            val spoofPass = avgSpoof > 0.45f 
 
             var warningText: String? = null
             var triggerSuccess = false

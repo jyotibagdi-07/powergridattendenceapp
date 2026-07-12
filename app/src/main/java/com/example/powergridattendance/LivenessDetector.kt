@@ -13,6 +13,7 @@ object LivenessDetector {
 
     private var eyesOpenBefore = false
     private var eyesClosed = false
+    private var eyesClosedFrames = 0
 
     fun addFrame(face: Face) {
         val leftOpen = face.leftEyeOpenProbability ?: -1.0f
@@ -29,8 +30,8 @@ object LivenessDetector {
                     Log.d("LIVENESS_DEBUG", "BLINK SEQUENCE: Eyes Open Detected")
                 }
             } else if (!eyesClosed) {
-                // Register eyes closed if either eye drops below 0.35f
-                if (leftOpen < 0.35f || rightOpen < 0.35f) {
+                // Register eyes closed if average drops below 0.35f (fast and robust)
+                if (avgOpen < 0.35f) {
                     eyesClosed = true
                     Log.d("LIVENESS_DEBUG", "BLINK SEQUENCE: Eyes Closed Detected")
                 }
@@ -427,5 +428,6 @@ object LivenessDetector {
         blinkDetected = false
         eyesOpenBefore = false
         eyesClosed = false
+        eyesClosedFrames = 0
     }
 }
