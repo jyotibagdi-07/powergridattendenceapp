@@ -115,8 +115,8 @@ private fun handleVerificationSuccess(
                 RecognitionState.faceMatched.value = matchedNameResult != "Unknown" && matchScoreResult > 0.38f
             }
 
-            // Anti-spoofing validation check before marking attendance (reject if real human score is below 0.45f)
-            if (spoofScore < 0.45f) {
+            // Anti-spoofing validation check before marking attendance (reject if real human score is below 0.65f)
+            if (spoofScore < 0.65f) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
@@ -346,7 +346,7 @@ fun CameraScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Spoof: ${((FaceState.liveSpoofScore.value ?: 0f) * 100).toInt()}% | " +
+                                text = "Spoof: ${((1.0f - (FaceState.liveSpoofScore.value ?: 0f)) * 100).toInt()}% | " +
                                         "Blur: ${((FaceState.liveBlurScore.value ?: 0f) * 100).toInt()}% | " +
                                         "NSFW: ${((FaceState.liveNsfwScore.value ?: 0f) * 100).toInt()}% | " +
                                         "Match: ${(RecognitionState.matchScore.value * 100).toInt()}%",
@@ -366,7 +366,7 @@ fun CameraScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
+                                text = "Spoof: ${if (liveSpoof != null) "${((1.0f - liveSpoof) * 100).toInt()}%" else "Calculating..."} | " +
                                         "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
                                         "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."} | " +
                                         "Match: ${(RecognitionState.matchScore.value * 100).toInt()}%",
@@ -412,7 +412,7 @@ fun CameraScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
+                                text = "Spoof: ${if (liveSpoof != null) "${((1.0f - liveSpoof) * 100).toInt()}%" else "Calculating..."} | " +
                                         "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
                                         "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."} | " +
                                         "Match: ${(RecognitionState.matchScore.value * 100).toInt()}%",
@@ -514,8 +514,8 @@ fun CameraScreen(
                                                 var spoofScore = FaceState.getAverageSpoof()
                                                 Log.d("CAPTURE_DEBUG", "Spoof: $spoofScore, LiveVerified: ${FaceState.isLiveVerified.value}")
 
-                                                // Block if spoof average is < 0.45f (meaning spoof is detected)
-                                                if (!CurrentEmployee.isRegisterMode && spoofScore < 0.45f) {
+                                                // Block if spoof average is < 0.65f (meaning spoof is detected)
+                                                if (!CurrentEmployee.isRegisterMode && spoofScore < 0.65f) {
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                             context,
