@@ -81,18 +81,24 @@ class TFLiteModelHelper(
         }
     }
 
-    fun predict(bitmap: Bitmap): FloatArray {
+    fun predict(bitmap: Bitmap, rotationDegrees: Int = 0): FloatArray {
         synchronized(lock) {
             val tflite = interpreter ?: return floatArrayOf(0.0f, 0.0f)
 
-            // 1. Rescale bitmap layer cleanly to fit current model dimensions
-            val resizedBitmap = if (bitmap.width == inputWidth && bitmap.height == inputHeight) {
+            val resizedBitmap = if (bitmap.width == inputWidth && bitmap.height == inputHeight && rotationDegrees == 0) {
                 bitmap
             } else {
-                Bitmap.createScaledBitmap(bitmap, inputWidth, inputHeight, true)
+                val scaled = Bitmap.createScaledBitmap(bitmap, inputWidth, inputHeight, true)
+                if (rotationDegrees != 0) {
+                    val matrix = android.graphics.Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                    val rotated = Bitmap.createBitmap(scaled, 0, 0, scaled.width, scaled.height, matrix, true)
+                    scaled.recycle()
+                    rotated
+                } else {
+                    scaled
+                }
             }
 
-            // Use pre-allocated pixelsBuffer array instead of fresh allocations
             val intValues = pixelsBuffer
             resizedBitmap.getPixels(intValues, 0, inputWidth, 0, 0, inputWidth, inputHeight)
 
@@ -100,85 +106,74 @@ class TFLiteModelHelper(
                 resizedBitmap.recycle()
             }
 
-            // 2. Rewind pre-allocated native input buffer
             inputBuffer.rewind()
 
             val isSpoofModel = modelName.contains("spoof", ignoreCase = true)
             val isBlurModel = modelName.contains("blur", ignoreCase = true)
-            val useNCHW = isNCHW || isSpoofModel
-            val useSigmoid = (outputSize == 1) || isBlurModel
 
-            // 3. Replace the internal execution segment with the normalized path
-            if (useNCHW) {
-                // Planar format [1, 3, 224, 224]
-                if (isSpoofModel) {
-                    // ImageNet normalization: (x / 255.0 - mean) / std
-                    for (i in 0 until intValues.size) {
-                        val pixel = intValues[i]
-                        val r = (((pixel shr 16) and 0xFF) / 255.0f - 0.485f) / 0.229f
-                        inputBuffer.putFloat(r)
-                    }
-                    for (i in 0 until intValues.size) {
-                        val pixel = intValues[i]
-                        val g = (((pixel shr 8) and 0xFF) / 255.0f - 0.456f) / 0.224f
-                        inputBuffer.putFloat(g)
-                    }
-                    for (i in 0 until intValues.size) {
-                        val pixel = intValues[i]
-                        val b = (((pixel and 0xFF)) / 255.0f - 0.406f) / 0.225f
-                        inputBuffer.putFloat(b)
-                    }
-                } else {
-                    for (i in 0 until intValues.size) {
-                        val pixel = intValues[i]
-                        val r = ((pixel shr 16) and 0xFF) / 255.0f
-                        inputBuffer.putFloat(r)
-                    }
-                    for (i in 0 until intValues.size) {
-                        val pixel = intValues[i]
-                        val g = ((pixel shr 8) and 0xFF) / 255.0f
-                        inputBuffer.putFloat(g)
-                    }
-                    for (i in 0 until intValues.size) {
-                        val pixel = intValues[i]
-                        val b = (pixel and 0xFF) / 255.0f
-                        inputBuffer.putFloat(b)
-                    }
+            // Dynamic layout flag check from input shape
+            val inputShape = tflite.getInputTensor(0)?.shape()
+            val useNCHW = if (inputShape != null && inputShape.size == 4) {
+                inputShape[1] == numChannels
+            } else {
+                false
+            }
+
+            // In the working APK, the layout selection was overridden:
+            // if z (which is isSpoofModel) is true, it runs interleaved.
+            // if z is false, it runs planar.
+            val layoutIsPlanar = if (isSpoofModel) {
+                false // runs interleaved
+            } else {
+                useNCHW // otherwise checks input layout
+            }
+
+            if (!layoutIsPlanar) {
+                // Interleaved NHWC format [1, 224, 224, 3]
+                for (pixel in intValues) {
+                    val r = ((pixel shr 16) and 0xFF) / 255.0f
+                    val g = ((pixel shr 8) and 0xFF) / 255.0f
+                    val b = (pixel and 0xFF) / 255.0f
+                    inputBuffer.putFloat(r)
+                    inputBuffer.putFloat(g)
+                    inputBuffer.putFloat(b)
                 }
             } else {
-                // Interleaved standard format [1, 224, 224, 3]
-                for (i in 0 until intValues.size) {
-                    val pixel = intValues[i]
+                // Planar NCHW format [1, 3, 224, 224]
+                for (pixel in intValues) {
                     inputBuffer.putFloat(((pixel shr 16) and 0xFF) / 255.0f)
+                }
+                for (pixel in intValues) {
                     inputBuffer.putFloat(((pixel shr 8) and 0xFF) / 255.0f)
+                }
+                for (pixel in intValues) {
                     inputBuffer.putFloat((pixel and 0xFF) / 255.0f)
                 }
             }
 
-            // 4. Run the evaluation matrix dynamically allocated based on outputSize
             inputBuffer.rewind()
             val rawOutputs = Array(1) { FloatArray(outputSize) }
             tflite.run(inputBuffer, rawOutputs)
 
-            Log.d("TFLiteHelper", "Model $modelName raw outputs: ${rawOutputs[0].joinToString()}")
-
-            // 5. Normalization based on output size (Sigmoid for single binary node, Softmax for 2 classes)
+            val useSigmoid = (outputSize == 1) || isBlurModel
             if (useSigmoid) {
                 val logit = rawOutputs[0][0]
+                if (logit >= 0.0f && logit <= 1.0f) {
+                    return floatArrayOf(logit)
+                }
                 val sigmoidVal = (1.0 / (1.0 + Math.exp(-logit.toDouble()))).toFloat()
                 return floatArrayOf(sigmoidVal)
             } else {
-                // DEFENSIVE EXPLICIT SOFTMAX OVERLAY
                 val logit0 = rawOutputs[0][0]
                 val logit1 = rawOutputs[0][1]
+                if (Math.abs((logit0 + logit1) - 1.0f) < 0.02f && logit0 >= 0.0f && logit1 >= 0.0f) {
+                    return rawOutputs[0]
+                }
                 val maxLogit = maxOf(logit0, logit1)
-
                 val exp0 = Math.exp((logit0 - maxLogit).toDouble()).toFloat()
                 val exp1 = Math.exp((logit1 - maxLogit).toDouble()).toFloat()
                 val sumExp = exp0 + exp1
-
-                val finalizedProbabilities = floatArrayOf(exp0 / sumExp, exp1 / sumExp)
-                return finalizedProbabilities
+                return floatArrayOf(exp0 / sumExp, exp1 / sumExp)
             }
         }
     }

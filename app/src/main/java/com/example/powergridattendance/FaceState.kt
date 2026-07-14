@@ -85,28 +85,40 @@ object FaceState {
             val avgBlur = if (blurHistory.isNotEmpty()) blurHistory.average().toFloat() else 0.0f
             val avgNsfw = if (nsfwSafetyHistory.isNotEmpty()) nsfwSafetyHistory.average().toFloat() else 0.0f
 
-            // - avgSpoof must be strictly GREATER than 0.65f (since spoofScore represents real human probability, set to 0.65f for balanced real-device security)
-            val blurPass = avgBlur < 0.92f 
-            val nsfwPass = avgNsfw < 0.70f 
-            val spoofPass = avgSpoof > 0.65f 
+            val blurPass = avgBlur < 0.15f
+            val nsfwPass = avgNsfw < 0.7f
+            val spoofPass = avgSpoof < 0.5f
 
             var warningText: String? = null
             var triggerSuccess = false
 
-            if (!blurPass || !nsfwPass) {
-                warningText = if (!blurPass) "Image Blurry" else "Adjust Lighting"
-            } else if (spoofPass) {
-                if (!LivenessDetector.blinkDetected) {
-                    warningText = "Blink to Verify Liveness"
+            if (blurPass && nsfwPass) {
+                if (spoofPass) {
+                    if (LivenessDetector.blinkDetected) {
+                        consecutivePassesStreakInternal++
+                        if (consecutivePassesStreakInternal >= 8) {
+                            attendanceVerifiedInternal = true
+                            warningText = "Liveness Verified! Click Capture"
+                        } else {
+                            warningText = "Verifying Liveness... Keep Still"
+                        }
+                    } else {
+                        consecutivePassesStreakInternal = 0
+                        warningText = "Blink to Verify Liveness"
+                    }
                 } else {
-                    // Liveness verified but don't auto-trigger, let user click capture
-                    attendanceVerifiedInternal = true
-                    triggerSuccess = false
-                    warningText = "Liveness Verified! Click Capture"
+                    consecutivePassesStreakInternal = 0
+                    warningText = if (avgSpoof >= 0.5f) "Avoid Screen Glare" else "Liveness Failed"
                 }
             } else {
                 consecutivePassesStreakInternal = 0
-                warningText = "Liveness Failed"
+                warningText = if (!blurPass && avgSpoof > 0.7f) {
+                    "Avoid Screen Glare"
+                } else if (!blurPass) {
+                    "Image Blurry"
+                } else {
+                    "Adjust Lighting"
+                }
             }
             return@synchronized MetricUpdateResult(
                 avgSpoof = avgSpoof,

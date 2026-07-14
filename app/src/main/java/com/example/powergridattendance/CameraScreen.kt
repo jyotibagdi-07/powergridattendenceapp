@@ -23,11 +23,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -240,6 +242,16 @@ fun CameraScreen(
 
     val faceNetHelper = remember {
         FaceNetHelper(context)
+    }
+
+    LaunchedEffect(Unit) {
+        delay(30000) // Session timeout of 30 seconds
+        if (!RecognitionState.attendanceMarked.value) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Session timeout: attendance not marked", Toast.LENGTH_SHORT).show()
+                onDone()
+            }
+        }
     }
 
     DisposableEffect(Unit) {

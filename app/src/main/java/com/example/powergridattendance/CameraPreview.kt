@@ -101,7 +101,7 @@ fun CameraPreview() {
     )
 }
 
-private fun isEmulator(): Boolean {
+fun isEmulator(): Boolean {
     return (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic"))
             || Build.FINGERPRINT.startsWith("generic")
             || Build.FINGERPRINT.startsWith("unknown")
