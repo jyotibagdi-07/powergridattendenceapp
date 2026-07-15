@@ -17,3 +17,11 @@ local.properties
 .kotlin/
 build/
 *.log
+
+# Decompiled reference files
+/decompile_out/
+/decompile_out_bad/
+/decompile_out_full/
+/decompile_out_bad.java
+/TFLiteModelHelper_decompiled.java
+/jadx-cli/
