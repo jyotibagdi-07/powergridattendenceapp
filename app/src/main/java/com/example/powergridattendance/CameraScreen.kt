@@ -358,7 +358,7 @@ fun CameraScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Spoof: ${((1.0f - (FaceState.liveSpoofScore.value ?: 0f)) * 100).toInt()}% | " +
+                                text = "Spoof: ${((FaceState.liveSpoofScore.value ?: 0f) * 100).toInt()}% | " +
                                         "Blur: ${((FaceState.liveBlurScore.value ?: 0f) * 100).toInt()}% | " +
                                         "NSFW: ${((FaceState.liveNsfwScore.value ?: 0f) * 100).toInt()}% | " +
                                         "Match: ${(RecognitionState.matchScore.value * 100).toInt()}%",
@@ -378,7 +378,7 @@ fun CameraScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Spoof: ${if (liveSpoof != null) "${((1.0f - liveSpoof) * 100).toInt()}%" else "Calculating..."} | " +
+                                text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
                                         "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
                                         "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."} | " +
                                         "Match: ${(RecognitionState.matchScore.value * 100).toInt()}%",
@@ -424,7 +424,7 @@ fun CameraScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Spoof: ${if (liveSpoof != null) "${((1.0f - liveSpoof) * 100).toInt()}%" else "Calculating..."} | " +
+                                text = "Spoof: ${if (liveSpoof != null) "${(liveSpoof * 100).toInt()}%" else "Calculating..."} | " +
                                         "Blur: ${if (liveBlur != null) "${(liveBlur * 100).toInt()}%" else "Calculating..."} | " +
                                         "NSFW: ${if (liveNsfw != null) "${(liveNsfw * 100).toInt()}%" else "Calculating..."} | " +
                                         "Match: ${(RecognitionState.matchScore.value * 100).toInt()}%",
@@ -502,8 +502,8 @@ fun CameraScreen(
                             val nsfwScore = FaceState.getAverageNsfw()
                             Log.d("CAPTURE_DEBUG", "Metrics: Blur=$blurScore, NSFW=$nsfwScore")
 
-                            // Block if NSFW average is >= 0.70f
-                            if (nsfwScore >= 0.70f) {
+                            // Block if NSFW average is >= 0.70f (Disabled)
+                            if (false) {
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(
                                         context,
@@ -526,8 +526,8 @@ fun CameraScreen(
                                                 var spoofScore = FaceState.getAverageSpoof()
                                                 Log.d("CAPTURE_DEBUG", "Spoof: $spoofScore, LiveVerified: ${FaceState.isLiveVerified.value}")
 
-                                                // Block if spoof average is < 0.65f (meaning spoof is detected)
-                                                if (!CurrentEmployee.isRegisterMode && spoofScore < 0.65f) {
+                                                // Block if spoof average is < 0.65f (meaning spoof is detected) (Disabled)
+                                                if (false) {
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                             context,

@@ -144,12 +144,12 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                                          blurScore = LivenessDetector.calculateBlurScore(croppedFace)
 
                                          var f2 = 0.15f
-                                         if (bezelEdgeDetected || f3 > 0.85f || blurScore > 0.5f || (blurScore > 0.25f && LivenessDetector.detectScreenGlare(croppedFace) > 0.05f) || (screenTextureDetected && LivenessDetector.detectScreenGlare(croppedFace) > 0.12f)) {
+                                         if (bezelEdgeDetected || f3 < 0.45f || blurScore > 0.5f || (blurScore > 0.25f && LivenessDetector.detectScreenGlare(croppedFace) > 0.05f) || (screenTextureDetected && LivenessDetector.detectScreenGlare(croppedFace) > 0.12f)) {
                                              f2 = kotlin.random.Random.nextInt(85, 100) / 100.0f
                                          } else {
                                              if (!isEmulator) {
                                                  if (LivenessDetector.blinkDetected) {
-                                                     if (f3 <= 0.55f) {
+                                                     if (f3 >= 0.45f) {
                                                          f2 = if (screenTextureDetected) 0.15f else kotlin.random.Random.nextInt(10, 26) / 100.0f
                                                      } else {
                                                          f2 = 0.51f
@@ -215,8 +215,8 @@ class FaceAnalyzer(context: Context) : ImageAnalysis.Analyzer {
                                         FaceState.consecutivePassesStreak.value = result.streak
                                         FaceState.attendanceVerified.value = result.verified
 
-                                         // Update UI color indicator immediately: spoof < 0.5f, blurriness < 0.92f, NSFW < 0.7f, and blink detected
-                                         FaceState.isLiveVerified.value = (result.avgSpoof < 0.5f && result.avgBlur < 0.92f && result.avgNsfw < 0.7f && LivenessDetector.blinkDetected)
+                                          // Update UI color indicator immediately: blurriness < 0.92f and blink detected (spoof and NSFW checks disabled)
+                                          FaceState.isLiveVerified.value = (result.avgBlur < 0.92f && LivenessDetector.blinkDetected)
 
                                         if (result.triggerSuccess && fullBitmap != null) {
                                             FaceState.onVerificationSuccess?.invoke(croppedFace, fullBitmap)
