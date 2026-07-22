@@ -1,4 +1,4 @@
-# PowerGrid Attendance System (PGAS)
+# FaceShield AI : An Anti - Spoof Attendance System
 
 An enterprise-grade, offline-first Android application designed for secure employee attendance verification. The system features a high-performance, real-time image analysis pipeline that implements advanced multi-heuristic Presentation Attack Detection (PAD) alongside deep-learning-based facial recognition.
 
@@ -54,7 +54,7 @@ graph TD
 ## Project Structure
 
 ```
-app/src/main/java/com/example/powergridattendance/
+app/src/main/java/com/example/faceshieldattendance/
 │
 ├── MainActivity.kt               # Entry point, permission launcher, screen router
 ├── CameraScreen.kt               # Real-time preview UI, camera overlay, warning banners
@@ -96,7 +96,7 @@ app/src/main/assets/
 ### Installation
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/jyotibagdi-07/powergridattendenceapp.git
+    git clone https://github.com/jyotibagdi-07/faceshieldattendenceapp.git
     ```
 2.  Open the project in Android Studio.
 3.  Sync project with Gradle Files.
